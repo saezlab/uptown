@@ -20,7 +20,7 @@ class SignedPathSolver(GraphSolverBase):
         self.connected_targets = {}
         self.connected_sc_targets = {}
 
-    def shortest_paths(self, verbose = False):
+    def shortest_paths(self, label, verbose = False):
         self.shortest_paths_res = []
         self.connected_targets = {}
         sources = list(self.source_dict.keys())
@@ -38,9 +38,24 @@ class SignedPathSolver(GraphSolverBase):
                     if verbose:
                         print(f"Warning: {e}")
 
-    def sign_consistency_check(self):
+        
+        degrees = [deg for node, deg in self.G.degree()]
+
+        runinfo = {
+            label: {
+                'num_nodes': len(self.G.nodes()),
+                'num_edges': len(self.G.edges()),
+                'degrees': degrees
+            }
+        }
+
+        return self.shortest_paths_res, runinfo
+        
+
+    def sign_consistency_check(self, label):
         self.shortest_sc_paths_res = []
         self.connected_sc_targets = {}
+        V = nx.DiGraph()
         for path in self.shortest_paths_res:
             product_sign = 1  # initialize the product of signs to 1
             source = path[0]
@@ -54,13 +69,27 @@ class SignedPathSolver(GraphSolverBase):
             # calculate the product of the signs of the edges
             for i in range(len(path) - 1):
                 edge_sign = self.G.get_edge_data(path[i], path[i + 1])['sign']
+                edge_data = self.G.get_edge_data(path[i], path[i + 1])
                 product_sign *= edge_sign
+                V.add_edge(path[i], path[i + 1], **edge_data)
             
             # check if the product of the signs matches the expectation
             if product_sign == source_sign * target_sign:
                 self.shortest_sc_paths_res.append(path)  # append the consistent path to sscps list
                 self.connected_sc_targets[source].append(target) # append the target to the list of connected targets
             self.connected_sc_targets[source] = list(set(self.connected_sc_targets[source]))
+        
+        degrees = [deg for node, deg in V.degree()]
+        
+        runinfo = {
+            label: {
+                'num_nodes': len(V.nodes()),
+                'num_edges': len(V.edges()),
+                'degrees': degrees
+            }
+        }
+
+        return self.shortest_sc_paths_res, runinfo
 
     
     def to_SIFfile(self, paths, title):
@@ -69,12 +98,13 @@ class SignedPathSolver(GraphSolverBase):
             for i in range(len(path) - 1):
                 interaction_type = 'P' if self.G[path[i]][path[i+1]]['sign'] > 0 else 'N'
                 sif_tuples.append((path[i], interaction_type, path[i+1]))
+
         
         sif_df = pd.DataFrame(sif_tuples, columns=['source', 'interaction', 'target']).drop_duplicates()
         sif_df.to_csv(title, sep='\t', index=None)
         return(sif_df)
 
-    def visualize_graph(self, paths, title="Graph", export=False, is_sign_consistent=True):
+    def visualize_graph(self, title="Graph", export_sif=False, is_sign_consistent=True):
         if is_sign_consistent and len(self.shortest_sc_paths_res) == 0:
             print('There were no sign consistent paths for the given perturbations and downstream effects.')
             return
@@ -83,9 +113,9 @@ class SignedPathSolver(GraphSolverBase):
 
         visualizer = GraphVisualizer(self)
 
-        title = title + "_sign_consistent" if is_sign_consistent else title
-
         visualizer.visualize_graph(paths, title=title, is_sign_consistent=is_sign_consistent)  
+
+        self.to_SIFfile(paths, title=title + ".sif") if export_sif else None
 
 
 
@@ -97,7 +127,7 @@ class GraphVisualizer:
         self.source_dict = graph_solver.source_dict
         self.target_dict = graph_solver.target_dict
 
-    def visualize_graph(self, paths, title="Graph", export=False, is_sign_consistent=True):
+    def visualize_graph(self, paths, title="Graph", is_sign_consistent=True):
         
 
         V = nx.DiGraph()
@@ -172,6 +202,3 @@ class GraphVisualizer:
         A.layout(prog='dot')
         file_path = f'{title}.pdf'
         A.draw(file_path, prog='dot')
-
-        # Export file
-        self.to_SIFfile(paths, title + ".sif") if export else None

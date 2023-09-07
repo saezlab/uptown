@@ -48,7 +48,7 @@ class PageRankSolver(SignedPathSolver):
         overlap = nodes_above_threshold_from_sources.intersection(nodes_above_threshold_from_targets)
         return nodes_above_threshold_from_sources, nodes_above_threshold_from_targets, overlap
     
-    def compute_filtered_shortest_paths(self, sign_consistent=True):
+    def compute_filtered_shortest_paths(self, label):
         # Get nodes that exceed the threshold and overlapping nodes
         nodes_from_sources, nodes_from_targets, overlapping_nodes = self.compute_overlap()
         nodes_to_include = nodes_from_sources.union(nodes_from_targets)
@@ -61,27 +61,25 @@ class PageRankSolver(SignedPathSolver):
         self.G = subG
         
         # Use the shortest_paths method from SignedPathSolver
-        self.shortest_paths()
+        shortest_path, runinfo = self.shortest_paths(label = label)
         
         # Optionally filter paths based on sign consistency
-        if sign_consistent:
-            self.sign_consistency_check()
-        
+
         # Restore the original graph
         self.G = original_graph
-        print(len(overlapping_nodes))
 
-        return self.shortest_sc_paths_res if sign_consistent else self.shortest_paths_res
+        return self.shortest_paths_res, runinfo
 
-    def visualize_pagerank(self, title="PageRankGraph", is_sign_consistent=True):
+    def visualize_pagerank(self, title="PageRankGraph", export_sif=True, is_sign_consistent=True):
         if is_sign_consistent and len(self.shortest_sc_paths_res) == 0:
             print('There were no sign consistent paths for the given perturbations and downstream effects.')
             return
-        
-        title = title + "_sign_consistent" if is_sign_consistent else title
         
         paths = self.shortest_sc_paths_res if is_sign_consistent else self.shortest_paths_res
 
         visualizer = GraphVisualizer(self)
 
-        visualizer.visualize_graph(paths, title=title, is_sign_consistent=is_sign_consistent)  
+        visualizer.visualize_graph(paths, title=title, is_sign_consistent=is_sign_consistent)
+
+        self.to_SIFfile(paths, title=title + ".sif") if export_sif else None
+
