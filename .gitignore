@@ -162,3 +162,6 @@ cython_debug/
 # Data and other files
 *.sif
 *.pdf
+*.csv
+*.gz
+*.txt

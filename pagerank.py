@@ -1,6 +1,7 @@
-from matplotlib import cm
+
 import networkx as nx
 from shortest_path import SignedPathSolver, GraphSolverBase, GraphVisualizer
+import time
 
 class PageRankSolver(SignedPathSolver):
     
@@ -62,8 +63,6 @@ class PageRankSolver(SignedPathSolver):
         
         # Use the shortest_paths method from SignedPathSolver
         shortest_path, runinfo = self.shortest_paths(label = label)
-        
-        # Optionally filter paths based on sign consistency
 
         # Restore the original graph
         self.G = original_graph
@@ -83,3 +82,76 @@ class PageRankSolver(SignedPathSolver):
 
         self.to_SIFfile(paths, title=title + ".sif") if export_sif else None
 
+    def compare_thresholds(self):
+        threshold = 0.01
+        targets_from_paths = []
+
+        # get non-pagerank solvers' info
+        start_time = time.time()
+        shortest_paths, runinfo = self.shortest_paths(label = 'shortest_path')
+        end_time = time.time()
+        computation_time = end_time - start_time
+        self.runinfo_dict.update(runinfo)
+        self.runinfo_dict['shortest_path'].update({'computation_time': computation_time})
+        targets_from_paths = {path[-1] for path in self.shortest_paths_res if len(path) > 1}
+        self.runinfo_dict['shortest_path'].update({'targets_connected': len(targets_from_paths)})
+        self.visualize_graph("shortest_path", is_sign_consistent=False, export_sif=True)
+
+        start_time = time.time()
+        shortest_sc_paths, runinfo = self.sign_consistency_check('shortest_sc_path')
+        end_time = time.time()
+        computation_time = end_time - start_time
+        self.runinfo_dict.update(runinfo)
+        self.runinfo_dict['shortest_sc_path'].update({'computation_time': computation_time})
+        targets_from_paths = {path[-1] for path in self.shortest_sc_paths_res if len(path) > 1}
+        self.runinfo_dict['shortest_sc_path'].update({'targets_connected': len(targets_from_paths)})
+        self.visualize_graph("shortest_sc_path", is_sign_consistent=True, export_sif=True)
+
+        while len(targets_from_paths) < len(self.target_dict) and threshold >= 0:
+            
+            self.threshold = threshold
+            threshold_label = f"pagerank_{threshold}"
+
+            start_time = time.time()
+            paths, runinfo = self.compute_filtered_shortest_paths(label = threshold_label)
+            end_time = time.time()
+
+            targets_from_paths = {path[-1] for path in self.shortest_paths_res if len(path) > 1}
+
+            self.runinfo_dict.update(runinfo)
+
+            self.runinfo_dict[threshold_label].update({'computation_time': computation_time})
+            self.runinfo_dict[threshold_label].update({'targets_connected': len(targets_from_paths)})
+
+            self.visualize_pagerank(threshold_label, is_sign_consistent=False, export_sif=True)
+
+
+            threshold_label = f"pagerank_sc_{threshold}"
+
+            start_time = time.time()
+            paths, runinfo = self.sign_consistency_check(label = threshold_label)
+            end_time = time.time()
+
+            computation_time = end_time - start_time
+
+            self.runinfo_dict.update(runinfo)
+            self.runinfo_dict[threshold_label].update({'computation_time': computation_time})
+            self.runinfo_dict[threshold_label].update({'targets_connected': len(targets_from_paths)})
+
+            self.visualize_pagerank(threshold_label, is_sign_consistent=True, export_sif=True)
+            
+            print(f"Threshold computed: {threshold}")
+
+            threshold = round(threshold - 0.001, 3)
+        
+    def visualize_qcplots(self, title="SizeThresholds", is_sign_consistent=True):
+
+        visualizer = GraphVisualizer(self)
+
+        visualizer.visualize_size_thresholds(title=title, is_sign_consistent=is_sign_consistent)
+        visualizer.visualize_threshold_elbowplot(title=title, is_sign_consistent=is_sign_consistent)
+        visualizer.visualize_comptime(is_sign_consistent=is_sign_consistent)
+
+    def visualize_degrees(self, selected_thresholds, is_sign_consistent=True):
+        visualizer = GraphVisualizer(self)
+        visualizer.visualize_degrees(selected_thresholds, is_sign_consistent=is_sign_consistent)

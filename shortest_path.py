@@ -4,6 +4,7 @@ import pandas as pd
 import networkx as nx
 import pygraphviz as pgv
 import numpy as np
+from matplotlib import pyplot as plt
 
 class GraphSolverBase:
     def __init__(self, G):
@@ -19,6 +20,7 @@ class SignedPathSolver(GraphSolverBase):
         self.shortest_sc_paths_res = []
         self.connected_targets = {}
         self.connected_sc_targets = {}
+        self.runinfo_dict = {}
 
     def shortest_paths(self, label, verbose = False):
         self.shortest_paths_res = []
@@ -126,6 +128,7 @@ class GraphVisualizer:
         self.targets = list(graph_solver.target_dict.keys())
         self.source_dict = graph_solver.source_dict
         self.target_dict = graph_solver.target_dict
+        self.runinfo_dict = graph_solver.runinfo_dict
 
     def visualize_graph(self, paths, title="Graph", is_sign_consistent=True):
         
@@ -202,3 +205,91 @@ class GraphVisualizer:
         A.layout(prog='dot')
         file_path = f'{title}.pdf'
         A.draw(file_path, prog='dot')
+
+
+    def visualize_size_thresholds(self, title = "SizeThresholds", is_sign_consistent=True):
+        if not is_sign_consistent:
+            thresholds = list({k: v for k, v in self.runinfo_dict.items() if k.startswith('pagerank_') and not k.startswith('pagerank_sc')})
+            thresholds_float = [float(t.split('_')[1]) for t in thresholds]
+        elif is_sign_consistent:
+            thresholds = list({k: v for k, v in self.runinfo_dict.items() if k.startswith('pagerank_sc')})
+            thresholds_float = [float(t.split('_')[2]) for t in thresholds]
+        
+        num_nodes = [self.runinfo_dict[t]['num_nodes'] for t in thresholds]
+        num_edges = [self.runinfo_dict[t]['num_edges'] for t in thresholds]
+        num_targets = [self.runinfo_dict[t]['targets_connected']/46*100 for t in thresholds]
+
+        
+
+        plt.figure(figsize=(10, 5))
+
+        # Primary y-axis (on the left)
+        ax1 = plt.gca()  # get the current axis
+        ax1.plot(thresholds_float, num_nodes, '-o', label="Number of Nodes")
+        ax1.plot(thresholds_float, num_edges, '-o', label="Number of Edges")
+        ax1.set_xlabel('Threshold')
+        ax1.set_ylabel('Count')
+        ax1.tick_params(axis='y')
+        ax1.legend(loc='upper center')
+
+        # Secondary y-axis (on the right)
+        ax2 = ax1.twinx()  # Create a twin y-axis sharing the same x-axis
+        ax2.plot(thresholds_float, num_targets, '-o', label="Number of Targets connected", color='olive')
+        ax2.set_ylabel('% connected Targets')
+        ax2.tick_params(axis='y')
+        ax2.legend(loc='upper right')
+
+        plt.title('PageRank: Number of Nodes, Edges, and % connected Targets over Thresholds')
+        plt.show()
+
+    def visualize_threshold_elbowplot(self, title = "Elbowplot", is_sign_consistent=True):
+        if not is_sign_consistent:
+            thresholds = list({k: v for k, v in self.runinfo_dict.items() if k.startswith('pagerank_') and not k.startswith('pagerank_sc')})
+        elif is_sign_consistent:
+            thresholds = list({k: v for k, v in self.runinfo_dict.items() if k.startswith('pagerank_sc')})
+
+        num_edges = [self.runinfo_dict[t]['num_edges'] for t in thresholds]
+        num_targets = [self.runinfo_dict[t]['targets_connected']/46*100 for t in thresholds]
+
+        plt.figure(figsize=(10, 5))
+        ax = plt.gca()
+        missing_targets = [100-t for t in num_targets]
+        ax.plot(num_edges, missing_targets, '-o')
+        for t in thresholds:
+            ax.text(num_edges[thresholds.index(t)], missing_targets[thresholds.index(t)], str(t))
+
+        plt.title('Number of Edges vs missing Targets, Elbow Plot')
+        plt.ylabel('% missing Targets')
+        plt.xlabel('Number of Edges')
+        plt.show()
+    
+    def visualize_comptime(self, is_sign_consistent=True):
+        if not is_sign_consistent:
+            thresholds = list({k: v for k, v in self.runinfo_dict.items() if k.startswith('pagerank_') and not k.startswith('pagerank_sc')})
+            thresholds_float = [float(t.split('_')[1]) for t in thresholds]
+        elif is_sign_consistent:
+            thresholds = list({k: v for k, v in self.runinfo_dict.items() if k.startswith('pagerank_sc')})
+            thresholds_float = [float(t.split('_')[2]) for t in thresholds]
+ 
+        computation_times = [self.runinfo_dict[t]['computation_time'] for t in thresholds]
+        plt.figure(figsize=(10, 5))
+        plt.plot(thresholds_float, computation_times, '-o', color="red")
+        plt.xlabel('Threshold')
+        plt.ylabel('Computation Time (s)')
+        plt.title('Computation Time over Thresholds')
+        plt.show()
+        
+
+    def visualize_degrees(self, selected_thresholds, is_sign_consistent=True):
+        plt.figure(figsize=(10, 5))
+        for threshold in selected_thresholds:
+            data = self.runinfo_dict.get(threshold)  # Use `get` method to retrieve the data
+            if data:  # This will check if data is not None
+                norm_degrees = np.ones_like(data['degrees']) / len(data['degrees'])
+                plt.hist(data['degrees'], label=threshold, alpha=0.3, bins=np.linspace(0, 100, 101), weights=norm_degrees)
+
+        plt.xlabel('Degree quantile')
+        plt.ylabel('Frequency')
+        plt.title('Degree Distribution across all Thresholds')
+        plt.legend(loc='upper right')
+        plt.show()
