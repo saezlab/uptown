@@ -42,7 +42,9 @@ class BaselineSolver(GraphSolverCore):
         self.source_dict = {}
         self.target_dict = {}
         self.shortest_paths_res = []
-        self.shortest_sc_paths_res = []
+        self.consistent_paths_res = []
+        self.all_paths_res = []
+        self.connected_all_path_targets = {}
         self.connected_targets = {}
         self.connected_sc_targets = {}
         self.runinfo_dict = {}
@@ -86,7 +88,44 @@ class BaselineSolver(GraphSolverCore):
 
         return self.shortest_paths_res, runinfo
         
+    def all_paths(self, label, cutoff=None, verbose=False):
+        """
+        Calculate all paths between sources and targets.
 
+        :param label: A label for the current run.
+        :param cutoff: Cutoff for path length. If None, there's no cutoff.
+        :param verbose: If True, print warnings when no path is found to a given target.
+        :return: A tuple containing all paths and run information.
+        """
+        self.all_paths_res = []
+        self.connected_all_path_targets = {}
+        sources = list(self.source_dict.keys())
+        targets = list(self.target_dict.keys())
+        for source_node in sources:
+            if source_node not in self.connected_all_path_targets:
+                self.connected_all_path_targets[source_node] = []
+
+            for target_node in targets:
+                try:
+                    paths = list(nx.all_simple_paths(self.G, source=source_node, target=target_node, cutoff=cutoff))
+                    self.all_paths_res.extend(paths)
+                    if paths:
+                        self.connected_all_path_targets[source_node].append(target_node)
+                except Exception as e:
+                    if verbose:
+                        print(f"Warning: {e}")
+
+        degrees = [deg for node, deg in self.G.degree()]
+
+        runinfo = {
+            label: {
+                'num_nodes': len(self.G.nodes()),
+                'num_edges': len(self.G.edges()),
+                'degrees': degrees
+            }
+        }
+
+        return self.all_paths_res, runinfo
 
     def sign_consistency_check(self, label):
         """

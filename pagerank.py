@@ -107,6 +107,31 @@ class PageRankSolver(BaselineSolver):
         # Restore the original graph
         self.G = original_graph
 
+        return self.all_paths_res, runinfo
+    
+    def compute_filtered_all_paths(self, label):
+        """
+        Compute the shortest paths in the graph after filtering nodes based on PageRank threshold.
+
+        :param label: A label for the current run.
+        :return: A tuple containing the shortest paths and run information.
+        """
+        # Get nodes that exceed the threshold and overlapping nodes
+        nodes_from_sources, nodes_from_targets, overlapping_nodes = self.compute_overlap()
+        nodes_to_include = nodes_from_sources.union(nodes_from_targets)
+        
+        # Create a subgraph with only the relevant nodes
+        subG = self.G.subgraph(nodes_to_include)
+        
+        # Store the current graph, replace with the subgraph, compute paths and then restore the original graph
+        original_graph = self.G
+        self.G = subG
+
+        shortest_path, runinfo = self.all_paths(label = label)
+
+        # Restore the original graph
+        self.G = original_graph
+
         return self.shortest_paths_res, runinfo
 
 
