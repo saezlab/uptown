@@ -1,6 +1,5 @@
 import pandas as pd
 import networkx as nx
-import pygraphviz as pgv
 import numpy as np
 from matplotlib import pyplot as plt
 import os
@@ -8,6 +7,7 @@ from upsetplot import plot
 import itertools
 import time
 import ptitprince as pt
+import statannot as st
 
 
 class Solver:
@@ -27,7 +27,7 @@ class Solver:
         self.label = 'pagerank'
         self.source_dict = {}
         self.target_dict = {}
-        self.threshold = 0
+        self.threshold = None
         self.subG = None
         self.is_reversed = False
         self.all_paths_res = []
@@ -118,6 +118,9 @@ class Solver:
                 except nx.NetworkXNoPath as e:
                     if verbose:
                         print(f"Warning: {e}")
+                except nx.NodeNotFound as e:
+                    if verbose:
+                        print(f"Warning: {e}")
 
         
         degrees = [deg for node, deg in self.subG.degree()]
@@ -127,10 +130,12 @@ class Solver:
 
         maxlength_connectedtargets = max(len(targets) for targets in self.connected_targets.values())
 
-        runinfo_entry = pd.Series({'analysis': 'shortest_paths', 'label': self.label, 'threshold': self.threshold, 'num_nodes': len(self.subG.nodes()), 'num_edges': len(self.subG.edges()), 'degrees': degrees, 'elapsed_time': elapsed_time, 'targets_connected': maxlength_connectedtargets})
-        self.runinfo_df = self.runinfo_df.append(runinfo_entry, ignore_index=True)
+        runinfo_entry = pd.Series({'analysis': 'shortest_paths', 'label': self.label, 'threshold': self.threshold, 'num_nodes': len(self.subG.nodes()), 'num_edges': len(self.subG.edges()), 'degrees': degrees, 'elapsed_time': elapsed_time, 'targets_connected': maxlength_connectedtargets}).to_frame().transpose()
+        self.runinfo_df = pd.concat([self.runinfo_df, runinfo_entry], ignore_index=True)
 
         self.to_SIFfile(self.shortest_paths_res, title=f'./results/{self.study_id}__{self.label}.sif')
+
+        self.visualize_graph(self.sc_paths_res, title=f'{self.study_id}__{self.label}', is_sign_consistent=True)
 
         return self.shortest_paths_res
 
@@ -171,8 +176,8 @@ class Solver:
 
         maxlength_connectedtargets = max(len(targets) for targets in self.connected_all_path_targets.values())
 
-        runinfo_entry = pd.Series({'analysis': 'all_paths', 'label': self.label, 'threshold': self.threshold, 'num_nodes': len(self.subG.nodes()), 'num_edges': len(self.subG.edges()), 'degrees': degrees, 'elapsed_time': elapsed_time, 'targets_connected': maxlength_connectedtargets})
-        self.runinfo_df = self.runinfo_df.append(runinfo_entry, ignore_index=True)
+        runinfo_entry = pd.Series({'analysis': 'all_paths', 'label': self.label, 'threshold': self.threshold, 'num_nodes': len(self.subG.nodes()), 'num_edges': len(self.subG.edges()), 'degrees': degrees, 'elapsed_time': elapsed_time, 'targets_connected': maxlength_connectedtargets}).to_frame().transpose()
+        self.runinfo_df = pd.concat([self.runinfo_df, runinfo_entry], ignore_index=True)
 
         self.to_SIFfile(self.all_paths_res, title=f'./results/{self.study_id}__{self.label}.sif')
 
@@ -213,16 +218,20 @@ class Solver:
             self.connected_sc_targets[source] = list(set(self.connected_sc_targets[source]))
 
         self.subG = V
-
-        maxlength_connectedtargets = max(len(targets) for targets in self.connected_sc_targets.values())
+        if not self.connected_sc_targets:
+            maxlength_connectedtargets = 0
+        else:
+            maxlength_connectedtargets = max(len(targets) for targets in self.connected_sc_targets.values())
         
         degrees = [deg for node, deg in self.subG.degree()]
         end_time = time.time()
         elapsed_time = end_time - start_time
-        runinfo_entry = pd.Series({'analysis': 'sc_check', 'label': self.label, 'threshold': self.threshold, 'num_nodes': len(self.subG.nodes()), 'num_edges': len(self.subG.edges()), 'degrees': degrees, 'elapsed_time': elapsed_time, 'targets_connected': maxlength_connectedtargets})
-        self.runinfo_df = self.runinfo_df.append(runinfo_entry, ignore_index=True)
+        runinfo_entry = pd.Series({'analysis': 'sc_check', 'label': self.label, 'threshold': self.threshold, 'num_nodes': len(self.subG.nodes()), 'num_edges': len(self.subG.edges()), 'degrees': degrees, 'elapsed_time': elapsed_time, 'targets_connected': maxlength_connectedtargets}).to_frame().transpose()
+        self.runinfo_df = pd.concat([self.runinfo_df, runinfo_entry], ignore_index=True)
         
         self.to_SIFfile(self.sc_paths_res, title=f'./results/{self.study_id}__{self.label}.sif')
+
+        self.visualize_graph(self.sc_paths_res, title=f'{self.study_id}__{self.label}', is_sign_consistent=True)
 
         return self.sc_paths_res
 
@@ -290,7 +299,7 @@ class Solver:
 
 
 
-    def visualize_degrees(self, selected_thresholds):
+    def visualize_degrees(self):
         """
         Visualize the degree distribution of the graph for selected thresholds. Wrapper 
         around the visualize_degrees method from GraphVisualizer class.
@@ -298,11 +307,11 @@ class Solver:
         :param selected_thresholds: List of thresholds to visualize.
         """
         visualizer = GraphVisualizer(self)
-        visualizer.visualize_degrees(selected_thresholds)
+        visualizer.visualize_degrees()
 
 
 
-    def visualize_intersection(self, selected_thresholds):
+    def visualize_intersection(self):
         """
         Visualize the intersection of edges for selected thresholds. Wrapper around the 
         visualize_intersection method from GraphVisualizer class.
@@ -310,7 +319,35 @@ class Solver:
         :param selected_thresholds: List of thresholds to visualize.
         """
         visualizer = GraphVisualizer(self)
-        visualizer.visualize_intersection(selected_thresholds)
+        visualizer.visualize_intersection()
+
+    def network_batchrun(self, cutoff=3, initial_threshold=0.01, verbose=False):
+        self.pagerank_solver(personalize_for='source')
+        self.pagerank_solver(personalize_for='target')
+    
+        self.threshold = initial_threshold
+        while self.threshold >=0:
+            self.label = 'pagerank'
+            self.compute_overlap()
+            self.all_paths(cutoff=cutoff)
+            self.sign_consistency_check(self.all_paths_res)
+            self.shortest_paths(verbose=verbose)
+            self.threshold = round(self.threshold - 0.001, 3)
+        
+        self.threshold = initial_threshold
+        while self.threshold >=0:
+            self.label = 'pagerank'
+            self.compute_overlap()
+            self.shortest_paths(verbose=verbose)
+            self.sign_consistency_check(self.shortest_paths_res)
+            self.threshold = round(self.threshold - 0.001, 3)
+
+        visualizer = GraphVisualizer(self)
+        visualizer.visualize_size_thresholds()
+        visualizer.visualize_threshold_elbowplot()
+        visualizer.visualize_comptime()
+        visualizer.visualize_degrees()
+        visualizer.visualize_intersection()
 
 
 
@@ -334,12 +371,7 @@ class GraphVisualizer:
         self.target_dict = graph_solver.target_dict
         self.runinfo_df = graph_solver.runinfo_df
         self.study_id = graph_solver.study_id
-
-    def read_runinfo_from_tsv(self, filename="./results/runinfo.tsv"):
-        if os.path.exists(filename):
-            self.runinfo_df = pd.read_csv(filename, sep='\t')
-        else:
-            print(f"Warning: {filename} does not exist!")
+        self.selected_thresholds = []
 
 
     def visualize_graph(self, paths, title="Graph", is_sign_consistent=True):
@@ -359,7 +391,7 @@ class GraphVisualizer:
                 V.add_node(node)
                 if len(path) > 1:
                     for i in range(len(path) - 1):
-                        edge_data = self.G.get_edge_data(path[i], path[i + 1])
+                        edge_data = self.subG.get_edge_data(path[i], path[i + 1])
                         V.add_edge(path[i], path[i + 1], **edge_data)
 
         sources = [s for s in self.sources if s in V.nodes()]
@@ -471,28 +503,66 @@ class GraphVisualizer:
 
 
 
+    def find_elbow(self, x, y):
+        """
+        Find the elbow of a curve given x and y points.
+        
+        Parameters:
+        - x: list of x coordinates.
+        - y: list of y coordinates.
+        
+        Returns:
+        - Index of the elbow point.
+        """
+        # Coordinates of the first point
+        p1 = np.array([x[0], y[0]])
+        
+        # Coordinates of the last point
+        p2 = np.array([x[-1], y[-1]])
+        
+        # Calculate unit vector of the line
+        unit_line = (p2 - p1) / np.linalg.norm(p2 - p1)
+        
+        # Find the elbow by computing distance from each point to the line
+        distances = []
+        for i in range(len(x)):
+            point = np.array([x[i], y[i]])
+            distance = np.linalg.norm(np.cross(p2-p1, p1-point))/np.linalg.norm(p2-p1)
+            distances.append(distance)
+            
+        # Return the index of the point with max distance which is the elbow
+        return np.argmax(distances)
+
+
+
     def visualize_threshold_elbowplot(self):
         """
         Visualize the threshold elbow plot of the graph. In other words, 
         the elbow indicates the best ratio size/number of connected targets.
-
-        :param title: Title for the visualization.
-        :param is_sign_consistent: If True, only visualize sign consistent paths.
         """
-        thresholds_allpaths = self.runinfo_df['threshold'][self.runinfo_df['label'].str.endswith('allpaths__sc__shortest')].tolist()
+        thresholds = self.runinfo_df['threshold'][self.runinfo_df['label'].str.endswith('allpaths__sc__shortest')].tolist()
         num_edges_allpaths = self.runinfo_df['num_edges'][self.runinfo_df['label'].str.endswith('allpaths__sc__shortest')].tolist()
         num_targets_allpaths = self.runinfo_df['targets_connected'][self.runinfo_df['label'].str.endswith('allpaths__sc__shortest')].tolist()
         num_edges_shortestpaths = self.runinfo_df['num_edges'][self.runinfo_df['label'].str.endswith('shortest__sc')].tolist()
         num_targets_shortestpaths = self.runinfo_df['targets_connected'][self.runinfo_df['label'].str.endswith('shortest__sc')].tolist()
 
+        # Find elbows
+        elbow_allpaths = self.find_elbow(num_edges_allpaths, [(1-t/len(self.target_dict))*100 for t in num_targets_allpaths])
+        elbow_shortestpaths = self.find_elbow(num_edges_shortestpaths, [(1-t/len(self.target_dict))*100 for t in num_targets_shortestpaths])
+
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 10))
-        missing_targets_allpaths = [100-t for t in num_targets_allpaths]
-        missing_targets_shortestpaths = [100-t for t in num_targets_shortestpaths]
+        missing_targets_allpaths = [(1-t/len(self.target_dict))*100 for t in num_targets_allpaths]
+        missing_targets_shortestpaths = [(1-t/len(self.target_dict))*100 for t in num_targets_shortestpaths]
         ax1.plot(num_edges_allpaths, missing_targets_allpaths, '-o')
-        ax2.plot(num_edges_shortestpaths, [100-t for t in num_targets_shortestpaths], '-o')
-        for t in thresholds_allpaths:
-            ax1.text(num_edges_allpaths[thresholds_allpaths.index(t)], missing_targets_allpaths[thresholds_allpaths.index(t)], str(t))
-            ax2.text(num_edges_shortestpaths[thresholds_allpaths.index(t)], missing_targets_shortestpaths[thresholds_allpaths.index(t)], str(t))
+        ax2.plot(num_edges_shortestpaths, missing_targets_shortestpaths, '-o')
+        
+        # Highlight elbows
+        ax1.scatter(num_edges_allpaths[elbow_allpaths], missing_targets_allpaths[elbow_allpaths], color='red', s=100)
+        ax2.scatter(num_edges_shortestpaths[elbow_shortestpaths], missing_targets_shortestpaths[elbow_shortestpaths], color='red', s=100)
+
+        for t in thresholds:
+            ax1.text(num_edges_allpaths[thresholds.index(t)], missing_targets_allpaths[thresholds.index(t)], str(t))
+            ax2.text(num_edges_shortestpaths[thresholds.index(t)], missing_targets_shortestpaths[thresholds.index(t)], str(t))
         ax1.set_ylim(0, 100)
         ax2.set_ylim(0, 100)
 
@@ -502,8 +572,19 @@ class GraphVisualizer:
         ax1.set_xlabel('Number of Edges')
         ax2.set_ylabel('% missing Targets')
         ax2.set_xlabel('Number of Edges')
-        fig.show()
 
+        label_allpaths = self.runinfo_df['label'][(self.runinfo_df['threshold'] == thresholds[elbow_allpaths]) & 
+                                            (self.runinfo_df['label'].str.endswith('allpaths__sc__shortest'))].iloc[0]
+        label_shortestpaths = self.runinfo_df['label'][(self.runinfo_df['threshold'] ==  thresholds[elbow_allpaths]) & 
+                                                (self.runinfo_df['label'].str.endswith('shortest__sc'))].iloc[0]
+        label_p0_allpaths = self.runinfo_df['label'][(self.runinfo_df['threshold'] == 0) & 
+                                            (self.runinfo_df['label'].str.endswith('allpaths__sc__shortest'))].iloc[0]
+        label_p0_shortestpaths = self.runinfo_df['label'][(self.runinfo_df['threshold'] ==  0) & 
+                                                (self.runinfo_df['label'].str.endswith('shortest__sc'))].iloc[0]
+
+        self.selected_thresholds = [label_allpaths, label_shortestpaths, label_p0_allpaths, label_p0_shortestpaths]
+
+        plt.show()
     
 
 
@@ -531,14 +612,16 @@ class GraphVisualizer:
         
 
 
-    def visualize_degrees(self, selected_thresholds):
+    def visualize_degrees(self):
         """
         Visualize the degree distribution of the graph for selected thresholds.
+        Provides statistical testing comparing the degree distribution of the 
+        subnetworks.
 
         :param selected_thresholds: List of thresholds to visualize.
         """
         formatted_data = []
-        for threshold in selected_thresholds:
+        for threshold in self.selected_thresholds:
             subset = self.runinfo_df[self.runinfo_df['label'] == threshold]
             if not subset.empty:
                 degrees = subset['degrees'].iloc[0]
@@ -547,10 +630,14 @@ class GraphVisualizer:
 
         formatted_df = pd.DataFrame(formatted_data, columns=['Threshold', 'Degree'])
 
-        plt.figure(figsize=(10, 10))
+        plt.figure(figsize=(10, 5))
         ax = pt.RainCloud(data = formatted_df, x = 'Threshold', y = 'Degree', palette = "Set2",
                         orient = 'v', width_box= .1, width_viol=1)
         ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha='right')
+        test_results = st.add_stat_annotation(ax, data=formatted_df, x='Threshold', y='Degree', 
+                                        box_pairs=[(self.selected_thresholds[i], self.selected_thresholds[j]) for i in range(len(self.selected_thresholds)) for j in range(i+1, len(self.selected_thresholds))],
+                                        test='Mann-Whitney', text_format='star', loc='outside', verbose=2)
+
         plt.show()
     
     
@@ -579,7 +666,7 @@ class GraphVisualizer:
 
 
 
-    def visualize_intersection(self, selected_thresholds):
+    def visualize_intersection(self):
         """
         Visualize an upset plot showing the intersection of edges 
         for graphs built with the selected thresholds.
@@ -588,7 +675,7 @@ class GraphVisualizer:
         """
         directory = './results/'
 
-        expected_files = [f'{self.study_id}__{threshold}.sif' for threshold in selected_thresholds]
+        expected_files = [f'{self.study_id}__{threshold}.sif' for threshold in self.selected_thresholds]
         all_files = [f for f in os.listdir(directory) if f in expected_files]
 
         edges_dict = {}
@@ -608,7 +695,7 @@ class GraphVisualizer:
 
         intersection_series = pd.Series(intersection_dict, )
         intersection_series = intersection_series[intersection_series > 0]
-        # intersection_series.index.names = combination
+        intersection_series.index.names = combination
 
         plot(intersection_series, sort_by='cardinality', show_counts=True, show_percentages=True)
         plt.show()
