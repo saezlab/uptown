@@ -128,14 +128,14 @@ class Solver:
         end_time = time.time()
         elapsed_time = end_time - start_time
 
-        maxlength_connectedtargets = max(len(targets) for targets in self.connected_targets.values())
+        maxlength_connectedtargets = len(set(itertools.chain.from_iterable(self.connected_targets.values())))
 
         runinfo_entry = pd.Series({'analysis': 'shortest_paths', 'label': self.label, 'threshold': self.threshold, 'num_nodes': len(self.subG.nodes()), 'num_edges': len(self.subG.edges()), 'degrees': degrees, 'elapsed_time': elapsed_time, 'targets_connected': maxlength_connectedtargets}).to_frame().transpose()
         self.runinfo_df = pd.concat([self.runinfo_df, runinfo_entry], ignore_index=True)
 
         self.to_SIFfile(self.shortest_paths_res, title=f'./results/{self.study_id}__{self.label}.sif')
 
-        self.visualize_graph(self.sc_paths_res, title=f'{self.study_id}__{self.label}', is_sign_consistent=True)
+        # self.visualize_graph(self.sc_paths_res, title=f'{self.study_id}__{self.label}', is_sign_consistent=True)
 
         return self.shortest_paths_res
 
@@ -174,7 +174,7 @@ class Solver:
         end_time = time.time()
         elapsed_time = end_time - start_time
 
-        maxlength_connectedtargets = max(len(targets) for targets in self.connected_all_path_targets.values())
+        maxlength_connectedtargets = len(set(itertools.chain.from_iterable(self.connected_all_path_targets.values())))
 
         runinfo_entry = pd.Series({'analysis': 'all_paths', 'label': self.label, 'threshold': self.threshold, 'num_nodes': len(self.subG.nodes()), 'num_edges': len(self.subG.edges()), 'degrees': degrees, 'elapsed_time': elapsed_time, 'targets_connected': maxlength_connectedtargets}).to_frame().transpose()
         self.runinfo_df = pd.concat([self.runinfo_df, runinfo_entry], ignore_index=True)
@@ -221,7 +221,7 @@ class Solver:
         if not self.connected_sc_targets:
             maxlength_connectedtargets = 0
         else:
-            maxlength_connectedtargets = max(len(targets) for targets in self.connected_sc_targets.values())
+            maxlength_connectedtargets = len(set(itertools.chain.from_iterable(self.connected_sc_targets.values())))
         
         degrees = [deg for node, deg in self.subG.degree()]
         end_time = time.time()
@@ -231,7 +231,7 @@ class Solver:
         
         self.to_SIFfile(self.sc_paths_res, title=f'./results/{self.study_id}__{self.label}.sif')
 
-        self.visualize_graph(self.sc_paths_res, title=f'{self.study_id}__{self.label}', is_sign_consistent=True)
+        # self.visualize_graph(self.sc_paths_res, title=f'{self.study_id}__{self.label}', is_sign_consistent=True)
 
         return self.sc_paths_res
 
