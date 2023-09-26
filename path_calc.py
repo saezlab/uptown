@@ -21,7 +21,6 @@ class Solver:
 
         :param G: A networkx graph object.
         """
-
         self.G = G
         self.study_id = study_id
         self.label = 'pagerank'
@@ -39,7 +38,12 @@ class Solver:
         self.connected_sc_targets = {}
         self.runinfo_df = pd.DataFrame(columns=['label', 'num_nodes', 'num_edges', 'degrees', 'elapsed_time'])
 
+
     def get_subnetwork(self, paths, sign_consistent=True):
+        """
+        Creates a subnetwork from a list of paths. Also checks for sign consistency.
+        :param paths: A list of lists containing paths.
+        """
         V = nx.DiGraph()
         connected_targets = {}
         paths_res = []
