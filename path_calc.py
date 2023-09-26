@@ -10,6 +10,7 @@ import ptitprince as pt
 import statannot as st
 
 
+
 class Solver:
     """
     Solver for finding signed paths in a graph.
@@ -19,7 +20,9 @@ class Solver:
         """
         Initialize the signed path solver with a given graph.
 
-        :param G: A networkx graph object.
+        Args:
+            G (networkx graph): A networkx graph object.
+            study_id (Any, optional): An identifier for the study. Defaults to None.
         """
         self.G = G
         self.study_id = study_id
@@ -39,10 +42,17 @@ class Solver:
         self.runinfo_df = pd.DataFrame(columns=['label', 'num_nodes', 'num_edges', 'degrees', 'elapsed_time'])
 
 
+
     def get_subnetwork(self, paths, sign_consistent=True):
         """
         Creates a subnetwork from a list of paths. Also checks for sign consistency.
-        :param paths: A list of lists containing paths.
+
+        Args:
+            paths (list): A list of lists containing paths.
+            sign_consistent (bool, optional): Determines if the network should check for sign consistency. Defaults to True.
+        
+        Returns:
+            Tuple: Contains the subgraph, connected targets, and the resulting paths.
         """
         V = nx.DiGraph()
         connected_targets = {}
@@ -72,17 +82,19 @@ class Solver:
         return V, connected_targets, paths_res
 
 
+
     def pagerank_solver(self, alpha=0.85, max_iter=100, tol=1.0e-6, nstart=None, weight='weight', dangling=None, personalize_for="source"):
         """
         Compute the PageRank values for nodes in the graph.
 
-        :param alpha: Damping factor for the PageRank algorithm.
-        :param max_iter: Maximum number of iterations.
-        :param tol: Tolerance to determine convergence.
-        :param nstart: Starting value of PageRank iteration for all nodes.
-        :param weight: Edge data key to use as weight.
-        :param dangling: Value to use for dangling nodes.
-        :param personalize_for: Personalize the PageRank by setting initial probabilities for either sources or targets.
+        Args:
+            alpha (float): Damping factor for the PageRank algorithm.
+            max_iter (int): Maximum number of iterations.
+            tol (float): Tolerance to determine convergence.
+            nstart (dict): Starting value of PageRank iteration for all nodes.
+            weight (str): Edge data key to use as weight.
+            dangling (Any): Value to use for dangling nodes.
+            personalize_for (str): Personalize the PageRank by setting initial probabilities for either sources or targets.
         """
         if personalize_for == "source":
             personalized_prob = {n: 1/len(self.source_dict) for n in self.source_dict}
@@ -110,11 +122,13 @@ class Solver:
             self.reverse_graph()
 
 
+
     def compute_overlap(self):
         """
         Compute the overlap of nodes that exceed the PageRank threshold from sources and targets.
 
-        :return: A tuple containing nodes above threshold from sources, nodes above threshold from targets, and overlapping nodes.
+        Returns:
+            tuple: Contains nodes above threshold from sources, nodes above threshold from targets, and overlapping nodes.
         """
         nodes_above_threshold_from_sources = {node for node, data in self.G.nodes(data=True) if data.get('pagerank_from_sources') > self.threshold}
         nodes_above_threshold_from_targets = {node for node, data in self.G.nodes(data=True) if data.get('pagerank_from_targets') > self.threshold}
@@ -125,13 +139,16 @@ class Solver:
         return nodes_above_threshold_from_sources, nodes_above_threshold_from_targets, overlap
 
 
+
     def shortest_paths(self, verbose = False):
         """
         Calculate the shortest paths between sources and targets.
 
-        :param label: A label for the current run.
-        :param verbose: If True, print warnings when no path is found to a given target.
-        :return: A tuple containing the shortest paths and run information.
+        Args:
+            verbose (bool): If True, print warnings when no path is found to a given target.
+
+        Returns:
+            list: A list containing the shortest paths.
         """
         self.label = f'{self.label}__shortest'
         start_time = time.time()
@@ -169,14 +186,17 @@ class Solver:
         return self.shortest_paths_res
 
 
+
     def all_paths(self, cutoff=None, verbose=False):
         """
         Calculate all paths between sources and targets.
 
-        :param label: A label for the current run.
-        :param cutoff: Cutoff for path length. If None, there's no cutoff.
-        :param verbose: If True, print warnings when no path is found to a given target.
-        :return: A tuple containing all paths and run information.
+        Args:
+            cutoff (int, optional): Cutoff for path length. If None, there's no cutoff.
+            verbose (bool): If True, print warnings when no path is found to a given target.
+
+        Returns:
+            list: A list containing all paths.
         """
         self.label = f'{self.label}__allpaths'
         start_time = time.time()
@@ -212,12 +232,16 @@ class Solver:
         return self.all_paths_res
 
     
+
     def sign_consistency_check(self, paths):
         """
         Check the sign consistency of the shortest paths.
 
-        :param label: A label for the current run.
-        :return: A tuple containing the sign consistent paths and run information.
+        Args:
+            paths (list): A list of paths to check for sign consistency.
+
+        Returns:
+            list: A list containing the sign consistent paths.
         """
         self.label = f'{self.label}__sc'
         start_time = time.time()
@@ -238,6 +262,7 @@ class Solver:
         return self.sc_paths_res
 
 
+
     def reverse_graph(self):
         """
         Reverse the direction of all edges in the graph.
@@ -246,13 +271,17 @@ class Solver:
         self.is_reversed = not self.is_reversed 
 
 
+
     def to_SIFfile(self, paths, title):
         """
-        Convert paths to SIF (Simple Interaction Format) and save as a file.
+        Converts paths to SIF (Simple Interaction Format) and save as a file.
 
-        :param paths: List of paths to be converted.
-        :param title: Title for the output file.
-        :return: A dataframe containing the SIF representation.
+        Args:
+            paths (list): List of paths to be converted.
+            title (str): Title for the output file.
+
+        Returns:
+            DataFrame: A dataframe containing the SIF representation.
         """
         os.makedirs('./results', exist_ok=True)
         sif_tuples = []
@@ -266,13 +295,18 @@ class Solver:
         return(sif_df)
 
 
+
     def visualize_graph(self, paths, title="Graph", is_sign_consistent=True):
         """
-        Visualize the graph via graphviz using the computed paths.
+        Visualizes the graph via graphviz using the computed paths.
 
-        :param title: Filename for the visualization.
-        :param export_sif: If True, export the visualization in SIF format.
-        :param is_sign_consistent: If True, only visualize sign consistent paths.
+        Args:
+            paths (list): List of paths to be visualized.
+            title (str, optional): Filename for the visualization. Defaults to "Graph".
+            is_sign_consistent (bool, optional): If True, only visualize sign consistent paths. Defaults to True.
+
+        Returns:
+            None
         """
         if len(paths) == 0:
             print('There were no sign consistent paths for the given perturbations and downstream effects.')
@@ -283,14 +317,13 @@ class Solver:
         visualizer.visualize_graph(paths, title=title, is_sign_consistent=is_sign_consistent)
 
 
+
     def visualize_qcplots(self):
         """
-        Visualize quality control plots for the graph. Wrapper around the 
-        visualize_size_thresholds, visualize_threshold_elbowplot and visualize_comptime 
-        methods from GraphVisualizer class.
+        Visualizes quality control plots for the graph.
 
-        :param title: Title for the visualization.
-        :param is_sign_consistent: If True, only visualize sign consistent paths.
+        Returns:
+            None
         """
         visualizer = GraphVisualizer(self)
 
@@ -299,29 +332,43 @@ class Solver:
         visualizer.visualize_comptime()
 
 
+
     def visualize_degrees(self):
         """
-        Visualize the degree distribution of the graph for selected thresholds. Wrapper 
-        around the visualize_degrees method from GraphVisualizer class.
+        Visualizes the degree distribution of the graph for selected thresholds.
 
-        :param selected_thresholds: List of thresholds to visualize.
+        Returns:
+            None
         """
         visualizer = GraphVisualizer(self)
         visualizer.visualize_degrees()
 
 
+
     def visualize_intersection(self):
         """
-        Visualize the intersection of edges for selected thresholds. Wrapper around the 
-        visualize_intersection method from GraphVisualizer class.
+        Visualizes the intersection of edges for selected thresholds.
 
-        :param selected_thresholds: List of thresholds to visualize.
+        Returns:
+            None
         """
         visualizer = GraphVisualizer(self)
         visualizer.visualize_intersection()
 
 
+
     def network_batchrun(self, cutoff=3, initial_threshold=0.01, verbose=False):
+        """
+        Executes a batch run for network analysis based on varying thresholds.
+
+        Args:
+            cutoff (int): The maximum depth to search paths in the network.
+            initial_threshold (float): The starting pagerank threshold value.
+            verbose (bool): Whether or not to print details during execution.
+
+        Returns:
+            None
+        """
         self.pagerank_solver(personalize_for='source')
         self.pagerank_solver(personalize_for='target')
     
@@ -356,16 +403,18 @@ class Solver:
 
 
 
+
 class GraphVisualizer:
     """
-    Class that incorporates different plots to compare the networks.
+    Incorporates different plots to compare the networks.
     """
 
     def __init__(self, graph_solver):
         """
-        Initialize the graph visualizer with a given graph solver.
+        Initialize the graph visualizer with a graph solver.
 
-        :param graph_solver: An instance of a graph solver.
+        Args:
+            graph_solver: An instance of a graph solver.
         """
         self.G = graph_solver.G
         self.subG = graph_solver.subG
@@ -378,13 +427,15 @@ class GraphVisualizer:
         self.selected_thresholds = []
 
 
+
     def visualize_graph(self, paths, title="Graph", is_sign_consistent=True):
         """
-        Visualize the graph using the given paths.
+        Visualize the graph using the provided paths.
 
-        :param paths: List of paths to be visualized.
-        :param title: Filename for the visualization.
-        :param is_sign_consistent: If True, only visualize sign consistent paths.
+        Args:
+            paths (list): Paths to be visualized.
+            title (str, optional): Filename for the visualization. Defaults to "Graph".
+            is_sign_consistent (bool, optional): If True, only visualize sign consistent paths. Defaults to True.
         """
         os.makedirs('./results', exist_ok=True)
 
@@ -465,10 +516,7 @@ class GraphVisualizer:
 
     def visualize_size_thresholds(self):
         """
-        Visualize the number of nodes, edges, and % connected targets over PageRank thresholds.
-
-        :param title: Title for the visualization.
-        :param is_sign_consistent: If True, only visualize sign consistent paths.
+        Visualize number of nodes, edges, and % connected targets over PageRank thresholds.
         """
         thresholds_allpaths = self.runinfo_df['threshold'][self.runinfo_df['label'].str.endswith('allpaths__sc__shortest')].tolist()
         num_nodes_allpaths = self.runinfo_df['num_nodes'][self.runinfo_df['label'].str.endswith('allpaths__sc__shortest')].tolist()
@@ -513,14 +561,14 @@ class GraphVisualizer:
 
     def find_elbow(self, x, y):
         """
-        Find the elbow of a curve given x and y points.
-        
-        Parameters:
-        - x: list of x coordinates.
-        - y: list of y coordinates.
-        
+        Find the elbow of a curve using x and y coordinates.
+
+        Args:
+            x (list): List of x coordinates.
+            y (list): List of y coordinates.
+
         Returns:
-        - Index of the elbow point.
+            int: Index of the elbow point.
         """
         # Coordinates of the first point
         p1 = np.array([x[0], y[0]])
@@ -545,8 +593,10 @@ class GraphVisualizer:
 
     def visualize_threshold_elbowplot(self):
         """
-        Visualize the threshold elbow plot of the graph. In other words, 
-        the elbow indicates the best ratio size/number of connected targets.
+        Visualizes the threshold elbow plot for the graph.
+
+        The elbow in the plot indicates the optimal trade-off between the graph's 
+        size and the number of connected targets.
         """
         thresholds = self.runinfo_df['threshold'][self.runinfo_df['label'].str.endswith('allpaths__sc__shortest')].tolist()
         num_edges_allpaths = self.runinfo_df['num_edges'][self.runinfo_df['label'].str.endswith('allpaths__sc__shortest')].tolist()
@@ -599,8 +649,6 @@ class GraphVisualizer:
     def visualize_comptime(self):
         """
         Visualize the computation time of the graph.
-
-        :param is_sign_consistent: If True, only visualize sign consistent paths.
         """
         thresholds_allpaths = self.runinfo_df['threshold'][self.runinfo_df['label'].str.endswith('allpaths__sc__shortest')].tolist()
         thresholds_shortestpaths = self.runinfo_df['threshold'][self.runinfo_df['label'].str.endswith('shortest__sc')].tolist()
@@ -625,8 +673,6 @@ class GraphVisualizer:
         Visualize the degree distribution of the graph for selected thresholds.
         Provides statistical testing comparing the degree distribution of the 
         subnetworks.
-
-        :param selected_thresholds: List of thresholds to visualize.
         """
         formatted_data = []
         for threshold in self.selected_thresholds:
@@ -652,10 +698,13 @@ class GraphVisualizer:
 
     def get_threshold(self, filename):
         """
-        Extract the threshold value from a given filename.
+        Extracts the threshold value from a given filename.
 
-        :param filename: Name of the file.
-        :return: Extracted threshold value.
+        Args:
+            filename (str): Name of the file.
+
+        Returns:
+            str: Extracted threshold value.
         """
         return filename.replace('.sif', '')
 
@@ -663,11 +712,14 @@ class GraphVisualizer:
 
     def get_intersection_for_thresholds(self, thresholds, edges_dict):
         """
-        Get the intersection of edges for given thresholds.
+        Gets the intersection of edges for given thresholds.
 
-        :param thresholds: List of thresholds.
-        :param edges_dict: Dictionary containing edges for each threshold.
-        :return: Number of intersecting edges.
+        Args:
+            thresholds (list): List of thresholds.
+            edges_dict (dict): Dictionary containing edges for each threshold.
+
+        Returns:
+            int: Number of intersecting edges.
         """
         edge_sets = [edges_dict[thresh] for thresh in thresholds]
         return len(set.intersection(*edge_sets))
@@ -676,10 +728,11 @@ class GraphVisualizer:
 
     def visualize_intersection(self):
         """
-        Visualize an upset plot showing the intersection of edges 
-        for graphs built with the selected thresholds.
+        Visualizes an upset plot showing the intersection of edges for graphs 
+        built with the selected thresholds.
 
-        :param selected_thresholds: List of thresholds to visualize.
+        Args:
+            selected_thresholds (list): List of thresholds to visualize.
         """
         directory = './results/'
 
