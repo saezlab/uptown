@@ -359,7 +359,10 @@ class Solver:
 
     def network_batchrun(self, cutoff=3, initial_threshold=0.01, verbose=False):
         """
-        Executes a batch run for network analysis based on varying thresholds.
+        Executes a batch run for network analysis based on varying pagerank thresholds.
+        Two execution threads are supported so far:
+            1) Pagerank Thresholding > compute all paths > sign consistency check > shortest paths
+            2) Pagerank Thresholding > shortest paths > sign consistency check
 
         Args:
             cutoff (int): The maximum depth to search paths in the network.
