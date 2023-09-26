@@ -39,6 +39,34 @@ class Solver:
         self.connected_sc_targets = {}
         self.runinfo_df = pd.DataFrame(columns=['label', 'num_nodes', 'num_edges', 'degrees', 'elapsed_time'])
 
+    def get_subnetwork(self, paths, sign_consistent=True):
+        V = nx.DiGraph()
+        connected_targets = {}
+        paths_res = []
+        for path in paths:
+            product_sign = 1
+            source = path[0]
+            target = path[-1]
+            source_sign = self.source_dict[source]
+            target_sign = self.target_dict[target]
+
+            if source not in connected_targets:
+                connected_targets[source] = []
+
+            for i in range(len(path) - 1):
+                edge_sign = self.subG.get_edge_data(path[i], path[i + 1])['sign']
+                
+                product_sign *= edge_sign
+
+            if (sign_consistent and product_sign == source_sign * target_sign) or not sign_consistent:
+                paths_res.append(path)
+                connected_targets[source].append(target) if target not in connected_targets[source] else None
+                for i in range(len(path) - 1):
+                    edge_data = self.subG.get_edge_data(path[i], path[i + 1])
+                    V.add_edge(path[i], path[i + 1], **edge_data)
+        
+        return V, connected_targets, paths_res
+
 
     def pagerank_solver(self, alpha=0.85, max_iter=100, tol=1.0e-6, nstart=None, weight='weight', dangling=None, personalize_for="source"):
         """
@@ -122,6 +150,7 @@ class Solver:
                     if verbose:
                         print(f"Warning: {e}")
 
+        self.subG, self.connected_targets, self.shortest_paths_res = self.get_subnetwork(self.shortest_paths_res, sign_consistent=False)
         
         degrees = [deg for node, deg in self.subG.degree()]
 
@@ -130,12 +159,8 @@ class Solver:
 
         maxlength_connectedtargets = len(set(itertools.chain.from_iterable(self.connected_targets.values())))
 
-        runinfo_entry = pd.Series({'analysis': 'shortest_paths', 'label': self.label, 'threshold': self.threshold, 'num_nodes': len(self.subG.nodes()), 'num_edges': len(self.subG.edges()), 'degrees': degrees, 'elapsed_time': elapsed_time, 'targets_connected': maxlength_connectedtargets}).to_frame().transpose()
+        runinfo_entry = pd.Series({'analysis': 'shortest_paths', 'label': self.label, 'threshold': self.threshold, 'num_nodes': len(set(self.subG.nodes())), 'num_edges': len(set(self.subG.edges())), 'degrees': degrees, 'elapsed_time': elapsed_time, 'targets_connected': maxlength_connectedtargets}).to_frame().transpose()
         self.runinfo_df = pd.concat([self.runinfo_df, runinfo_entry], ignore_index=True)
-
-        self.to_SIFfile(self.shortest_paths_res, title=f'./results/{self.study_id}__{self.label}.sif')
-
-        # self.visualize_graph(self.sc_paths_res, title=f'{self.study_id}__{self.label}', is_sign_consistent=True)
 
         return self.shortest_paths_res
 
@@ -169,6 +194,7 @@ class Solver:
                     if verbose:
                         print(f"Warning: {e}")
 
+        self.subG, self.connected_all_path_targets, self.all_paths_res = self.get_subnetwork(self.all_paths_res, sign_consistent=False)
         degrees = [deg for node, deg in self.subG.degree()]
 
         end_time = time.time()
@@ -178,8 +204,6 @@ class Solver:
 
         runinfo_entry = pd.Series({'analysis': 'all_paths', 'label': self.label, 'threshold': self.threshold, 'num_nodes': len(self.subG.nodes()), 'num_edges': len(self.subG.edges()), 'degrees': degrees, 'elapsed_time': elapsed_time, 'targets_connected': maxlength_connectedtargets}).to_frame().transpose()
         self.runinfo_df = pd.concat([self.runinfo_df, runinfo_entry], ignore_index=True)
-
-        self.to_SIFfile(self.all_paths_res, title=f'./results/{self.study_id}__{self.label}.sif')
 
         return self.all_paths_res
 
@@ -193,31 +217,9 @@ class Solver:
         """
         self.label = f'{self.label}__sc'
         start_time = time.time()
-        self.sc_paths_res = []
-        self.connected_sc_targets = {}
-        V = nx.DiGraph()
-        for path in paths:
-            product_sign = 1
-            source = path[0]
-            target = path[-1]
-            source_sign = self.source_dict[source]
-            target_sign = self.target_dict[target]
 
-            if source not in self.connected_sc_targets:
-                self.connected_sc_targets[source] = []
+        self.subG, self.connected_sc_targets, self.sc_paths_res = self.get_subnetwork(paths, sign_consistent=True)
 
-            for i in range(len(path) - 1):
-                edge_sign = self.subG.get_edge_data(path[i], path[i + 1])['sign']
-                edge_data = self.subG.get_edge_data(path[i], path[i + 1])
-                product_sign *= edge_sign
-                V.add_edge(path[i], path[i + 1], **edge_data)
-
-            if product_sign == source_sign * target_sign:
-                self.sc_paths_res.append(path)
-                self.connected_sc_targets[source].append(target)
-            self.connected_sc_targets[source] = list(set(self.connected_sc_targets[source]))
-
-        self.subG = V
         if not self.connected_sc_targets:
             maxlength_connectedtargets = 0
         else:
@@ -228,10 +230,6 @@ class Solver:
         elapsed_time = end_time - start_time
         runinfo_entry = pd.Series({'analysis': 'sc_check', 'label': self.label, 'threshold': self.threshold, 'num_nodes': len(self.subG.nodes()), 'num_edges': len(self.subG.edges()), 'degrees': degrees, 'elapsed_time': elapsed_time, 'targets_connected': maxlength_connectedtargets}).to_frame().transpose()
         self.runinfo_df = pd.concat([self.runinfo_df, runinfo_entry], ignore_index=True)
-        
-        self.to_SIFfile(self.sc_paths_res, title=f'./results/{self.study_id}__{self.label}.sif')
-
-        # self.visualize_graph(self.sc_paths_res, title=f'{self.study_id}__{self.label}', is_sign_consistent=True)
 
         return self.sc_paths_res
 
@@ -252,9 +250,7 @@ class Solver:
         :param title: Title for the output file.
         :return: A dataframe containing the SIF representation.
         """
-        directory = './results/'
-        if not os.path.exists(directory):
-            os.makedirs(directory)
+        os.makedirs('./results', exist_ok=True)
         sif_tuples = []
         for path in paths:
             for i in range(len(path) - 1):
@@ -274,13 +270,14 @@ class Solver:
         :param export_sif: If True, export the visualization in SIF format.
         :param is_sign_consistent: If True, only visualize sign consistent paths.
         """
-        if is_sign_consistent and len(self.sc_paths_res) == 0:
+        if len(paths) == 0:
             print('There were no sign consistent paths for the given perturbations and downstream effects.')
             return
 
         visualizer = GraphVisualizer(self)
 
         visualizer.visualize_graph(paths, title=title, is_sign_consistent=is_sign_consistent)
+
 
     def visualize_qcplots(self):
         """
@@ -298,7 +295,6 @@ class Solver:
         visualizer.visualize_comptime()
 
 
-
     def visualize_degrees(self):
         """
         Visualize the degree distribution of the graph for selected thresholds. Wrapper 
@@ -308,7 +304,6 @@ class Solver:
         """
         visualizer = GraphVisualizer(self)
         visualizer.visualize_degrees()
-
 
 
     def visualize_intersection(self):
@@ -321,6 +316,7 @@ class Solver:
         visualizer = GraphVisualizer(self)
         visualizer.visualize_intersection()
 
+
     def network_batchrun(self, cutoff=3, initial_threshold=0.01, verbose=False):
         self.pagerank_solver(personalize_for='source')
         self.pagerank_solver(personalize_for='target')
@@ -331,7 +327,9 @@ class Solver:
             self.compute_overlap()
             self.all_paths(cutoff=cutoff)
             self.sign_consistency_check(self.all_paths_res)
-            self.shortest_paths(verbose=verbose)
+            paths = self.shortest_paths(verbose=verbose)
+            self.to_SIFfile(paths, title=f'./results/{self.study_id}__{self.label}.sif')
+            self.visualize_graph(paths, title=self.label, is_sign_consistent=True)
             self.threshold = round(self.threshold - 0.001, 3)
         
         self.threshold = initial_threshold
@@ -339,7 +337,9 @@ class Solver:
             self.label = 'pagerank'
             self.compute_overlap()
             self.shortest_paths(verbose=verbose)
-            self.sign_consistency_check(self.shortest_paths_res)
+            paths = self.sign_consistency_check(self.shortest_paths_res)
+            self.to_SIFfile(paths, title=f'./results/{self.study_id}__{self.label}.sif')
+            self.visualize_graph(paths, title=self.label, is_sign_consistent=True)
             self.threshold = round(self.threshold - 0.001, 3)
 
         visualizer = GraphVisualizer(self)
@@ -396,6 +396,10 @@ class GraphVisualizer:
 
         sources = [s for s in self.sources if s in V.nodes()]
         targets = [path[-1] for path in paths]
+
+        if len(V.edges()) > 600:
+            print(f'The graph is too large to visualize. It has {len(V.edges())} edges.')
+            return
 
         A = nx.nx_agraph.to_agraph(V)
         A.graph_attr['ratio'] = '0.70707'
