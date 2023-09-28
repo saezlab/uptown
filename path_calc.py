@@ -382,7 +382,7 @@ class Solver:
 
 
 
-    def network_batchrun(self, cutoff=3, initial_threshold=0.01, verbose=False):
+    def network_batchrun(self, cutoff=3, initial_threshold=0.01):
         """
         Executes a batch run for network analysis based on varying pagerank thresholds.
         Two execution threads are supported so far:
@@ -451,6 +451,8 @@ class Solver:
         # visualizer.visualize_comptime()
         # visualizer.visualize_degrees()
         # visualizer.visualize_intersection()
+
+        self.runinfo_df.to_csv(f'./results/{self.study_id}__runinfo.csv', index=None)
 
 
 
