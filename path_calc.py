@@ -8,7 +8,7 @@ import itertools
 import time
 import ptitprince as pt
 import statannot as st
-
+from pathos.multiprocessing import ProcessingPool as Pool
 
 
 class Solver:
@@ -108,15 +108,15 @@ class Solver:
         elif personalize_for == "source" and self.is_reversed:
             self.reverse_graph()
         
-        personalized_prob.update({n: 0 for n in self.G.nodes() if n not in personalized_prob})
+        personalized_prob.update({n: 0 for n in self.subG.nodes() if n not in personalized_prob})
         
-        pagerank = nx.pagerank(self.G, alpha=alpha, max_iter=max_iter, personalization=personalized_prob, tol=tol, nstart=nstart, weight=weight, dangling=dangling)
+        pagerank = nx.pagerank(self.subG, alpha=alpha, max_iter=max_iter, personalization=personalized_prob, tol=tol, nstart=nstart, weight=weight, dangling=dangling)
         
         self.pagerank_values[personalize_for] = pagerank
         
         for node, pr_value in pagerank.items():
             attribute_name = 'pagerank_from_targets' if personalize_for == "target" else 'pagerank_from_sources'
-            self.G.nodes[node][attribute_name] = pr_value
+            self.subG.nodes[node][attribute_name] = pr_value
         
         if personalize_for == "target" and self.is_reversed:
             self.reverse_graph()
@@ -130,12 +130,12 @@ class Solver:
         Returns:
             tuple: Contains nodes above threshold from sources, nodes above threshold from targets, and overlapping nodes.
         """
-        nodes_above_threshold_from_sources = {node for node, data in self.G.nodes(data=True) if data.get('pagerank_from_sources') > self.threshold}
-        nodes_above_threshold_from_targets = {node for node, data in self.G.nodes(data=True) if data.get('pagerank_from_targets') > self.threshold}
+        nodes_above_threshold_from_sources = {node for node, data in self.subG.nodes(data=True) if data.get('pagerank_from_sources') > self.threshold}
+        nodes_above_threshold_from_targets = {node for node, data in self.subG.nodes(data=True) if data.get('pagerank_from_targets') > self.threshold}
         overlap = nodes_above_threshold_from_sources.intersection(nodes_above_threshold_from_targets)
         nodes_to_include = nodes_above_threshold_from_sources.union(nodes_above_threshold_from_targets)
-        self.subG = self.G.subgraph(nodes_to_include)
-        self.label = f'{self.label}__{self.threshold}'
+        self.subG = self.subG.subgraph(nodes_to_include)
+        self.label = f'{self.label}__pagerank_{self.threshold}'
         return nodes_above_threshold_from_sources, nodes_above_threshold_from_targets, overlap
 
 
@@ -185,9 +185,19 @@ class Solver:
 
         return self.shortest_paths_res
 
+    def compute_paths(self, args):
+        G, source, targets, cutoff = args
+        paths_for_source = []
+        connected_targets_for_source = []
+        for target in targets:
+            paths = list(nx.all_simple_paths(G, source=source, target=target, cutoff=cutoff))
+            paths_for_source.extend(paths)
+            if paths:
+                connected_targets_for_source.append(target)
+        return paths_for_source, connected_targets_for_source
 
 
-    def all_paths(self, cutoff=None, verbose=False):
+    def all_paths(self, cutoff=None, verbose=False, num_processes=None):
         """
         Calculate all paths between sources and targets.
 
@@ -204,19 +214,15 @@ class Solver:
         self.connected_all_path_targets = {}
         sources = list(self.source_dict.keys())
         targets = list(self.target_dict.keys())
-        for source_node in sources:
-            if source_node not in self.connected_all_path_targets:
-                self.connected_all_path_targets[source_node] = []
 
-            for target_node in targets:
-                try:
-                    paths = list(nx.all_simple_paths(self.subG, source=source_node, target=target_node, cutoff=cutoff))
-                    self.all_paths_res.extend(paths)
-                    if paths:
-                        self.connected_all_path_targets[source_node].append(target_node)
-                except Exception as e:
-                    if verbose:
-                        print(f"Warning: {e}")
+        with Pool(processes=num_processes) as pool:
+            all_args = [(self.subG, source, targets, cutoff) for source in sources]
+            results = pool.map(self.compute_paths, all_args)
+
+        for i, source in enumerate(sources):
+            paths_for_source, connected_targets_for_source = results[i]
+            self.all_paths_res.extend(paths_for_source)
+            self.connected_all_path_targets[source] = connected_targets_for_source
 
         self.subG, self.connected_all_path_targets, self.all_paths_res = self.get_subnetwork(self.all_paths_res, sign_consistent=False)
         degrees = [deg for node, deg in self.subG.degree()]
@@ -357,6 +363,25 @@ class Solver:
 
 
 
+    def reachability_filter(self, G):
+        """
+        Filters the graph for reachability.
+
+        Returns:
+            None
+        """
+        reachable_nodes = set(self.source_dict.keys())
+        for source in self.source_dict.keys():
+            reachable_nodes.update(nx.descendants(G, source))
+        
+        subG = G.subgraph(reachable_nodes)
+
+        self.label = f'{self.label}__reachability'
+
+        return subG
+
+
+
     def network_batchrun(self, cutoff=3, initial_threshold=0.01, verbose=False):
         """
         Executes a batch run for network analysis based on varying pagerank thresholds.
@@ -372,36 +397,60 @@ class Solver:
         Returns:
             None
         """
+
+        
+        self.label = self.study_id
+        self.subG = self.reachability_filter(self.G)
+        initial_subG = self.subG
         self.pagerank_solver(personalize_for='source')
         self.pagerank_solver(personalize_for='target')
+        initial_label = self.label
     
         self.threshold = initial_threshold
-        while self.threshold >=0:
-            self.label = 'pagerank'
+
+        while self.threshold >= 0:
+            print('Computing path 1 with threshold', self.threshold)
+            self.label = initial_label
+            self.subG = initial_subG
             self.compute_overlap()
-            self.all_paths(cutoff=cutoff)
-            self.sign_consistency_check(self.all_paths_res)
-            paths = self.shortest_paths(verbose=verbose)
-            self.to_SIFfile(paths, title=f'./results/{self.study_id}__{self.label}.sif')
-            self.visualize_graph(paths, title=self.label, is_sign_consistent=True)
-            self.threshold = round(self.threshold - 0.001, 3)
-        
-        self.threshold = initial_threshold
-        while self.threshold >=0:
-            self.label = 'pagerank'
-            self.compute_overlap()
-            self.shortest_paths(verbose=verbose)
-            paths = self.sign_consistency_check(self.shortest_paths_res)
-            self.to_SIFfile(paths, title=f'./results/{self.study_id}__{self.label}.sif')
-            self.visualize_graph(paths, title=self.label, is_sign_consistent=True)
+            shortest_paths = self.shortest_paths()
+            self.to_SIFfile(shortest_paths, title=f'./results/{self.study_id}__{self.label}.sif')
+            self.visualize_graph(shortest_paths, title=self.label, is_sign_consistent=True)
+            shortest_sc_paths = self.sign_consistency_check(shortest_paths)
+            self.to_SIFfile(shortest_sc_paths, title=f'./results/{self.study_id}__{self.label}.sif')
+            self.visualize_graph(shortest_sc_paths, title=self.label, is_sign_consistent=True)
             self.threshold = round(self.threshold - 0.001, 3)
 
-        visualizer = GraphVisualizer(self)
-        visualizer.visualize_size_thresholds()
-        visualizer.visualize_threshold_elbowplot()
-        visualizer.visualize_comptime()
-        visualizer.visualize_degrees()
-        visualizer.visualize_intersection()
+        # while self.threshold >= 0:
+        #     self.compute_overlap()
+        #     self.all_paths(cutoff=cutoff)
+        #     self.sign_consistency_check(self.all_paths_res)
+        #     paths = self.shortest_paths(verbose=verbose)
+        #     self.to_SIFfile(paths, title=f'./results/{self.study_id}__{self.label}.sif')
+        #     self.visualize_graph(paths, title=self.label, is_sign_consistent=True)
+        #     self.threshold = round(self.threshold - 0.001, 3)
+        
+        self.threshold = initial_threshold
+        while self.threshold > 0:
+            print('Computing path 2 with threshold', self.threshold)
+            self.label = initial_label
+            self.subG = initial_subG
+            self.compute_overlap()
+            self.subG = self.reachability_filter(self.subG)
+            all_paths = self.all_paths(cutoff=cutoff)
+            self.to_SIFfile(all_paths, title=f'./results/{self.study_id}__{self.label}.sif')
+            self.visualize_graph(all_paths, title=self.label, is_sign_consistent=True)
+            all_sc_paths = self.sign_consistency_check(all_paths)
+            self.to_SIFfile(all_sc_paths, title=f'./results/{self.study_id}__{self.label}.sif')
+            self.visualize_graph(all_sc_paths, title=self.label, is_sign_consistent=True)
+            self.threshold = round(self.threshold - 0.001, 3)
+
+        # visualizer = GraphVisualizer(self)
+        # visualizer.visualize_size_thresholds()
+        # visualizer.visualize_threshold_elbowplot()
+        # visualizer.visualize_comptime()
+        # visualizer.visualize_degrees()
+        # visualizer.visualize_intersection()
 
 
 
@@ -673,7 +722,7 @@ class GraphVisualizer:
 
     def visualize_degrees(self):
         """
-        Visualize the degree distribution of the graph for selected thresholds.
+        Visualize the normalized degree distribution of the graph for selected thresholds.
         Provides statistical testing comparing the degree distribution of the 
         subnetworks.
         """
@@ -682,20 +731,23 @@ class GraphVisualizer:
             subset = self.runinfo_df[self.runinfo_df['label'] == threshold]
             if not subset.empty:
                 degrees = subset['degrees'].iloc[0]
+                total_nodes = len(degrees)  # Assuming 'degrees' contains a degree for each node in the subset
                 for degree in degrees:
-                    formatted_data.append([threshold, degree])
+                    normalized_degree = degree / (2 * (total_nodes - 1))
+                    formatted_data.append([threshold, normalized_degree])
 
-        formatted_df = pd.DataFrame(formatted_data, columns=['Threshold', 'Degree'])
+        formatted_df = pd.DataFrame(formatted_data, columns=['Threshold', 'Normalized Degree'])
 
         plt.figure(figsize=(10, 5))
-        ax = pt.RainCloud(data = formatted_df, x = 'Threshold', y = 'Degree', palette = "Set2",
+        ax = pt.RainCloud(data = formatted_df, x = 'Threshold', y = 'Normalized Degree', palette = "Set2",
                         orient = 'v', width_box= .1, width_viol=1)
         ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha='right')
-        test_results = st.add_stat_annotation(ax, data=formatted_df, x='Threshold', y='Degree', 
-                                        box_pairs=[(self.selected_thresholds[i], self.selected_thresholds[j]) for i in range(len(self.selected_thresholds)) for j in range(i+1, len(self.selected_thresholds))],
-                                        test='Mann-Whitney', text_format='star', loc='outside', verbose=2)
+        test_results = st.add_stat_annotation(ax, data=formatted_df, x='Threshold', y='Normalized Degree', 
+                                            box_pairs=[(self.selected_thresholds[i], self.selected_thresholds[j]) for i in range(len(self.selected_thresholds)) for j in range(i+1, len(self.selected_thresholds))],
+                                            test='Mann-Whitney', text_format='star', loc='outside', verbose=2)
 
         plt.show()
+
     
     
 
