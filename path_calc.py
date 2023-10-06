@@ -343,7 +343,7 @@ class Solver:
 
 
 
-    def network_batchrun(self, cutoff=3, initial_threshold=0.01):
+    def network_batchrun(self, iter, cutoff=3, initial_threshold=0.01):
         """
         Executes a batch run for network analysis based on varying pagerank thresholds.
         Two execution threads are supported so far:
@@ -360,7 +360,8 @@ class Solver:
         """
 
         
-        self.label = self.study_id
+        self.label = f'{self.study_id}__{iter}'
+        self.iter = iter
         self.subG = self.reachability_filter(self.G)
         initial_subG = self.subG
         self.pagerank_solver(personalize_for='source')
@@ -432,6 +433,7 @@ class GraphVisualizer:
         self.runinfo_df = graph_solver.runinfo_df
         self.study_id = graph_solver.study_id
         self.selected_thresholds = []
+        self.iter = graph_solver.iter
 
 
 
@@ -744,7 +746,7 @@ class GraphVisualizer:
         
         directory = './results/'
         
-        expected_files = [f'{self.study_id}__reachability{threshold}.sif' 
+        expected_files = [f'{self.study_id}__{self.iter}__reachability{threshold}.sif' 
                         for threshold in self.selected_thresholds]
         
         all_files = [f for f in os.listdir(directory) if f in expected_files]

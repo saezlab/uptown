@@ -1,0 +1,71 @@
+ggarrange                 package:egg                  R Documentation
+
+_g_g_a_r_r_a_n_g_e
+
+_D_e_s_c_r_i_p_t_i_o_n:
+
+     Arrange multiple ggplot objects on a page, aligning the plot
+     panels.
+
+_U_s_a_g_e:
+
+     ggarrange(..., plots = list(...), nrow = NULL, ncol = NULL,
+       widths = NULL, heights = NULL, byrow = TRUE, top = NULL,
+       bottom = NULL, left = NULL, right = NULL, padding = unit(0.5,
+       "line"), clip = "on", draw = TRUE, newpage = TRUE, debug = FALSE,
+       labels = NULL, label.args = list(gp = grid::gpar(font = 4, cex =
+       1.2)))
+     
+_A_r_g_u_m_e_n_t_s:
+
+     ...: ggplot objects
+
+   plots: list of ggplots
+
+    nrow: number of rows
+
+    ncol: number of columns
+
+  widths: list of requested widths
+
+ heights: list of requested heights
+
+   byrow: logical, fill by rows
+
+     top: optional string, or grob
+
+  bottom: optional string, or grob
+
+    left: optional string, or grob
+
+   right: optional string, or grob
+
+ padding: unit of length one, margin around annotations
+
+    clip: argument of gtable
+
+    draw: logical: draw or return a grob
+
+ newpage: logical: draw on a new page
+
+   debug: logical, show layout with thin lines
+
+  labels: character labels used for annotation of subfigures
+
+label.args: label list of parameters for the formatting of labels
+
+_V_a_l_u_e:
+
+     gtable of aligned plots
+
+_E_x_a_m_p_l_e_s:
+
+     p1 <- ggplot(mtcars, aes(mpg, wt, colour = factor(cyl))) +
+       geom_point()
+     p2 <- ggplot(mtcars, aes(mpg, wt, colour = factor(cyl))) +
+       geom_point() + facet_wrap( ~ cyl, ncol=2, scales = 'free') +
+       guides(colour='none') +
+       theme()
+     ggarrange(p1, p2, widths = c(2,1), labels = c('a', 'b'))
+     
+
