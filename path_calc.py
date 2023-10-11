@@ -58,8 +58,8 @@ class Solver:
         connected_targets = {}
         paths_res = []
         for path in paths:
-            product_sign = 1
             source = path[0]
+            product_sign = 1
             target = path[-1]
             source_sign = self.source_dict[source]
             target_sign = self.target_dict[target]
@@ -72,7 +72,7 @@ class Solver:
                 
                 product_sign *= edge_sign
 
-            if (sign_consistent and product_sign == source_sign * target_sign) or not sign_consistent:
+            if (sign_consistent and source_sign * product_sign == target_sign) or not sign_consistent:
                 paths_res.append(path)
                 connected_targets[source].append(target) if target not in connected_targets[source] else None
                 for i in range(len(path) - 1):
@@ -83,7 +83,7 @@ class Solver:
 
 
 
-    def pagerank_solver(self, alpha=0.85, max_iter=100, tol=1.0e-6, nstart=None, weight='weight', dangling=None, personalize_for="source"):
+    def pagerank_solver(self, alpha=0.85, max_iter=100, tol=1.0e-6, nstart=None, weight='weight', personalize_for="source"):
         """
         Compute the PageRank values for nodes in the graph.
 
@@ -93,9 +93,9 @@ class Solver:
             tol (float): Tolerance to determine convergence.
             nstart (dict): Starting value of PageRank iteration for all nodes.
             weight (str): Edge data key to use as weight.
-            dangling (Any): Value to use for dangling nodes.
             personalize_for (str): Personalize the PageRank by setting initial probabilities for either sources or targets.
         """
+    
         if personalize_for == "source":
             personalized_prob = {n: 1/len(self.source_dict) for n in self.source_dict}
         elif personalize_for == "target":
@@ -103,14 +103,15 @@ class Solver:
         else:
             raise ValueError("personalize_for should be either 'source' or 'target'")
         
+        
         if personalize_for == "target" and not self.is_reversed:
-            self.reverse_graph()
+            self.subG = self.reverse_graph(self.subG)
         elif personalize_for == "source" and self.is_reversed:
-            self.reverse_graph()
-        
+            self.subG = self.reverse_graph(self.subG)
+
         personalized_prob.update({n: 0 for n in self.subG.nodes() if n not in personalized_prob})
-        
-        pagerank = nx.pagerank(self.subG, alpha=alpha, max_iter=max_iter, personalization=personalized_prob, tol=tol, nstart=nstart, weight=weight, dangling=dangling)
+
+        pagerank = nx.pagerank(self.subG, alpha=alpha, max_iter=max_iter, personalization=personalized_prob, tol=tol, nstart=nstart, weight=weight, dangling=personalized_prob)
         
         self.pagerank_values[personalize_for] = pagerank
         
@@ -119,7 +120,7 @@ class Solver:
             self.subG.nodes[node][attribute_name] = pr_value
         
         if personalize_for == "target" and self.is_reversed:
-            self.reverse_graph()
+            self.reverse_graph(self.subG)
 
 
 
@@ -269,12 +270,13 @@ class Solver:
 
 
 
-    def reverse_graph(self):
+    def reverse_graph(self, G):
         """
         Reverse the direction of all edges in the graph.
         """
-        self.G = self.G.reverse()
-        self.is_reversed = not self.is_reversed 
+        G = G.reverse()
+        self.is_reversed = not self.is_reversed
+        return G
 
 
 
@@ -363,9 +365,14 @@ class Solver:
         self.label = f'{self.study_id}__{iter}'
         self.iter = iter
         self.subG = self.reachability_filter(self.G)
+        
+        try:
+            self.pagerank_solver(personalize_for='source')
+            self.pagerank_solver(personalize_for='target')
+        except ZeroDivisionError as e:
+            print(f"Warning: The network is too small. {e}")
+            return
         initial_subG = self.subG
-        self.pagerank_solver(personalize_for='source')
-        self.pagerank_solver(personalize_for='target')
         initial_label = self.label
     
         self.threshold = initial_threshold
@@ -402,10 +409,10 @@ class Solver:
         self.runinfo_df.to_csv(f'./results/{self.study_id}__runinfo.csv', index=None)
 
         visualizer = GraphVisualizer(self)
-        visualizer.visualize_qc_thresholds()
-        visualizer.visualize_threshold_elbowplot()
-        visualizer.visualize_degrees()
-        visualizer.visualize_intersection()
+        # visualizer.visualize_qc_thresholds()
+        # visualizer.visualize_threshold_elbowplot()
+        # visualizer.visualize_degrees()
+        # visualizer.visualize_intersection()
 
 
 
