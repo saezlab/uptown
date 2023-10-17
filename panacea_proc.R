@@ -15,7 +15,7 @@ cell_lines <- panacea_de %>% select(contains('BAFETINIB')) %>% names(.) %>%
   distinct(valuea4a1) %>% pull()
 
 panacea_de_filtered <- panacea_de %>%
-  select(ID, contains('__filtered__tmm+limma')) %>%
+  select(ID, contains('__filtered__NA+deseq2')) %>%
   dplyr::rename(gene_symbol = ID) # %>%
   # dplyr::rename(logFC = contains('logFC'),
   #               pval = contains('padj'),
@@ -75,7 +75,7 @@ offtargets_df
 
 write_tsv(offtargets_df, 'panacea_offtargets.tsv')
 
-treatment <- treatments[1]
+
 panacea_targets_df <- tibble()
 for(treatment in treatments){
   panacea_treatment_filtered <- panacea_de_filtered %>%

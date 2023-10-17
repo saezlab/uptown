@@ -39,7 +39,7 @@ class Solver:
         self.connected_targets = {}
         self.sc_paths_res = []
         self.connected_sc_targets = {}
-        self.runinfo_df = pd.DataFrame(columns=['label', 'num_nodes', 'num_edges', 'degrees', 'elapsed_time'])
+        self.runinfo_df = pd.DataFrame(columns=['label', 'elapsed_time'])
 
 
 
@@ -150,7 +150,7 @@ class Solver:
 
         Returns:
             list: A list containing the shortest paths.
-        """
+         """
         self.label = f'{self.label}__shortest'
         start_time = time.time()
         self.shortest_paths_res = []
@@ -173,15 +173,11 @@ class Solver:
                         print(f"Warning: {e}")
 
         self.subG, self.connected_targets, self.shortest_paths_res = self.get_subnetwork(self.shortest_paths_res, sign_consistent=False)
-        
-        degrees = [deg for node, deg in self.subG.degree()]
 
         end_time = time.time()
         elapsed_time = end_time - start_time
 
-        maxlength_connectedtargets = len(set(itertools.chain.from_iterable(self.connected_targets.values())))
-
-        runinfo_entry = pd.Series({'analysis': 'shortest_paths', 'label': self.label, 'threshold': self.threshold, 'num_nodes': len(set(self.subG.nodes())), 'num_edges': len(set(self.subG.edges())), 'degrees': degrees, 'elapsed_time': elapsed_time, 'targets_connected': maxlength_connectedtargets}).to_frame().transpose()
+        runinfo_entry = pd.Series({'label': self.label, 'elapsed_time': elapsed_time}).to_frame().transpose()
         self.runinfo_df = pd.concat([self.runinfo_df, runinfo_entry], ignore_index=True)
 
         return self.shortest_paths_res
@@ -226,14 +222,11 @@ class Solver:
             self.connected_all_path_targets[source] = connected_targets_for_source
 
         self.subG, self.connected_all_path_targets, self.all_paths_res = self.get_subnetwork(self.all_paths_res, sign_consistent=False)
-        degrees = [deg for node, deg in self.subG.degree()]
 
         end_time = time.time()
         elapsed_time = end_time - start_time
 
-        maxlength_connectedtargets = len(set(itertools.chain.from_iterable(self.connected_all_path_targets.values())))
-
-        runinfo_entry = pd.Series({'analysis': 'all_paths', 'label': self.label, 'threshold': self.threshold, 'num_nodes': len(self.subG.nodes()), 'num_edges': len(self.subG.edges()), 'degrees': degrees, 'elapsed_time': elapsed_time, 'targets_connected': maxlength_connectedtargets}).to_frame().transpose()
+        runinfo_entry = pd.Series({'label': self.label, 'elapsed_time': elapsed_time}).to_frame().transpose()
         self.runinfo_df = pd.concat([self.runinfo_df, runinfo_entry], ignore_index=True)
 
         return self.all_paths_res
@@ -254,16 +247,10 @@ class Solver:
         start_time = time.time()
 
         self.subG, self.connected_sc_targets, self.sc_paths_res = self.get_subnetwork(paths, sign_consistent=True)
-
-        if not self.connected_sc_targets:
-            maxlength_connectedtargets = 0
-        else:
-            maxlength_connectedtargets = len(set(itertools.chain.from_iterable(self.connected_sc_targets.values())))
         
-        degrees = [deg for node, deg in self.subG.degree()]
         end_time = time.time()
         elapsed_time = end_time - start_time
-        runinfo_entry = pd.Series({'analysis': 'sc_check', 'label': self.label, 'threshold': self.threshold, 'num_nodes': len(self.subG.nodes()), 'num_edges': len(self.subG.edges()), 'degrees': degrees, 'elapsed_time': elapsed_time, 'targets_connected': maxlength_connectedtargets}).to_frame().transpose()
+        runinfo_entry = pd.Series({'label': self.label, 'elapsed_time': elapsed_time}).to_frame().transpose()
         self.runinfo_df = pd.concat([self.runinfo_df, runinfo_entry], ignore_index=True)
 
         return self.sc_paths_res
@@ -298,7 +285,7 @@ class Solver:
                 interaction_type = 'P' if self.subG[path[i]][path[i+1]]['sign'] > 0 else 'N'
                 sif_tuples.append((path[i], interaction_type, path[i+1]))
 
-        sif_df = pd.DataFrame(sif_tuples, columns=['source', 'interaction', 'target']).drop_duplicates()
+        sif_df = pd.DataFrame(sif_tuples, columns=['# source', 'interaction', 'target']).drop_duplicates()
         sif_df.to_csv(title, sep='\t', index=None)
         return(sif_df)
 
@@ -406,9 +393,9 @@ class Solver:
             self.visualize_graph(all_sc_paths, title=self.label, is_sign_consistent=True)
             self.threshold = round(self.threshold - 0.001, 3)
 
-        self.runinfo_df.to_csv(f'./results/{self.study_id}__runinfo.csv', index=None)
+        self.runinfo_df.to_csv(f'./results/{self.study_id}__{self.iter}__runinfo.csv', index=None)
 
-        visualizer = GraphVisualizer(self)
+        # visualizer = GraphVisualizer(self)
         # visualizer.visualize_qc_thresholds()
         # visualizer.visualize_threshold_elbowplot()
         # visualizer.visualize_degrees()
@@ -616,7 +603,6 @@ class GraphVisualizer:
             
         # Return the index of the point with max distance which is the elbow
         return np.argmax(distances)
-
 
 
     def visualize_threshold_elbowplot(self):

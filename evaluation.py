@@ -7,13 +7,15 @@ import numpy as np
 import seaborn as sns
 
 class Eval:
-    def __init__(self, G, dirpath, study_id):
+    def __init__(self, dirpath, study_id):
         self.dirpath = dirpath
-        self.G = G
+        self.G = None
         self.study_id = study_id
+        self.target_dict = None
         self.tests_dict = self.get_test_dict()
-        self.graphs, self.metadata_df = self.parse_sif_files()
+        self.graphs, self.graphdata_df = self.parse_sif_files()
         self.distance_df = None
+        self.filtered_df = None
 
     def get_datafiles(self):
         files_list = os.listdir(self.dirpath)
@@ -98,14 +100,17 @@ class Eval:
         metadata_df = pd.DataFrame({
             'Graph ID': graph_ids,
             'Study ID': study_ids,
-            'Targets': iter_ids,
+            'Iteration': iter_ids,
             'Methods': methods_list,
             'Pagerank Threshold': pagerank_thresholds
         })
+
+        metadata_df.sort_values(by=['Study ID', 'Iteration', 'Methods', 'Pagerank Threshold'], inplace=True)
         
         return graphs, metadata_df
     
 
+    # Distance eval
     def distance_calc(self):
         distances = []
         test_nodes = []
@@ -159,12 +164,102 @@ class Eval:
         
         plt.show()
 
-
-
+    # Comparisons
+    def get_number_nodes(self):
+        """
+        For a given dictionary of networks, computes the number of nodes and appends it to the self.graphdata_df dataframe.
+        """
+        num_nodes = []
+        for graph in self.graphs:
+            num_nodes.append(len(self.graphs[graph].nodes))
+        nodes_info = pd.DataFrame({'Graph ID': list(self.graphs.keys()), 'Number of nodes': num_nodes})
+        self.graphdata_df = pd.merge(self.graphdata_df, nodes_info, on="Graph ID")
     
+    def get_number_edges(self):
+        num_edges = []
+        for graph in self.graphs:
+            num_edges.append(len(self.graphs[graph].edges))
+        edges_info = pd.DataFrame({'Graph ID': list(self.graphs.keys()), 'Number of edges': num_edges})
+        self.graphdata_df = pd.merge(self.graphdata_df, edges_info, on="Graph ID")
 
+    def get_connected_targets(self, target_dict):
+        """
+        Given a network and a set of targets, compute how many targets are in the network (nodes)
+        """
+        num_targets = []
+        for graph in self.graphs:
+            iter_id = graph.split('__')[1]
+            drug = iter_id.split('_')[1]
+            targets = target_dict[drug].keys()
+            num_targets.append(len(set(targets) & set(self.graphs[graph].nodes)))
+        targets_info = pd.DataFrame({'Graph ID': list(self.graphs.keys()), 'Connected targets': num_targets})
+        self.graphdata_df = pd.merge(self.graphdata_df, targets_info, on="Graph ID")
 
+    def compute_degree_distribution(self):
+        """
+        Compute the degree distribution for each graph in the self.graphs dictionary.
+        """
+        degree_distributions = []
+        for graph in self.graphs:
+            degree_distributions.append(self.graphs[graph].degree)
+        degree_info = pd.DataFrame({'Graph ID': list(self.graphs.keys()), 'Degree distribution': degree_distributions})
+        self.graphdata_df = pd.merge(self.graphdata_df, degree_info, on="Graph ID")
+
+    def find_elbow(self, x, y):
+        """
+        Find the elbow of a curve using x and y coordinates.
+
+        Args:
+            x (list): List of x coordinates.
+            y (list): List of y coordinates.
+
+        Returns:
+            int: Index of the elbow point.
+        """
+        # Coordinates of the first point
+        p1 = np.array([x[0], y[0]])
+        
+        # Coordinates of the last point
+        p2 = np.array([x[-1], y[-1]])
+        
+        
+        # Find the elbow by computing distance from each point to the line
+        distances = []
+        for i in range(len(x)):
+            point = np.array([x[i], y[i]])
+            distance = np.linalg.norm(np.cross(p2-p1, p1-point))/np.linalg.norm(p2-p1)
+            distances.append(distance)
+            
+        # Return the index of the point with max distance which is the elbow
+        return np.argmax(distances)
     
+    def threshold_filter(self):
+        perc_missing_targets = []
+        num_edges = []
+
+        methods = set(self.graphdata_df['Methods'].tolist())
+        iterations = set(self.graphdata_df['Iteration'].tolist())
+        filtered_df = pd.DataFrame()
+
+        for iterat in iterations:
+            for method in methods:
+                print(f"Processing {method} {iterat}...")
+                sorted_df = self.graphdata_df[(self.graphdata_df['Methods'] == method) & (self.graphdata_df['Iteration'] == iterat)].sort_values(by=['Pagerank Threshold'])
+
+                targets = self.target_dict[iterat].keys()
+                num_targets = len(targets)
+                # add column of missing targets
+                sorted_df['Perc missing targets'] = (num_targets - sorted_df['Connected targets']) / num_targets * 100
+
+                perc_missing_targets = sorted_df['Perc missing targets'].tolist()
+                num_edges = sorted_df['Number of edges'].tolist()
+                
+                selected_threshold_index = self.find_elbow(num_edges, perc_missing_targets)
+                # bind rows the selected threshold to the filtered df using pd.concat
+                filtered_df = pd.concat([filtered_df, sorted_df.iloc[selected_threshold_index:selected_threshold_index+1, :]])
+        
+        return filtered_df
+   
 
 
 
