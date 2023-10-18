@@ -189,8 +189,9 @@ class Eval:
         num_targets = []
         for graph in self.graphs:
             iter_id = graph.split('__')[1]
+            cell_line = iter_id.split('_')[0]
             drug = iter_id.split('_')[1]
-            targets = target_dict[drug].keys()
+            targets = target_dict[cell_line][drug].keys()
             num_targets.append(len(set(targets) & set(self.graphs[graph].nodes)))
         targets_info = pd.DataFrame({'Graph ID': list(self.graphs.keys()), 'Connected targets': num_targets})
         self.graphdata_df = pd.merge(self.graphdata_df, targets_info, on="Graph ID")
@@ -243,10 +244,12 @@ class Eval:
 
         for iterat in iterations:
             for method in methods:
+                drug = iterat.split('_')[1]
+                cell_line = iterat.split('_')[0]
                 print(f"Processing {method} {iterat}...")
                 sorted_df = self.graphdata_df[(self.graphdata_df['Methods'] == method) & (self.graphdata_df['Iteration'] == iterat)].sort_values(by=['Pagerank Threshold'])
 
-                targets = self.target_dict[iterat].keys()
+                targets = self.target_dict[cell_line][drug].keys()
                 num_targets = len(targets)
                 # add column of missing targets
                 sorted_df['Perc missing targets'] = (num_targets - sorted_df['Connected targets']) / num_targets * 100
@@ -256,10 +259,34 @@ class Eval:
                 
                 selected_threshold_index = self.find_elbow(num_edges, perc_missing_targets)
                 # bind rows the selected threshold to the filtered df using pd.concat
-                filtered_df = pd.concat([filtered_df, sorted_df.iloc[selected_threshold_index:selected_threshold_index+1, :]])
+                threshold_0 = sorted_df[sorted_df['Pagerank Threshold'] == 0]
+                filtered_df = pd.concat([filtered_df, sorted_df.iloc[selected_threshold_index:selected_threshold_index+1, :], threshold_0])
         
-        return filtered_df
-   
+        self.graphdata_df = filtered_df
+    
+    def get_returned_offtargets(self, offtarget_dict):
+        offtarget_results = []
+
+        # Iterating over each key in the network dictionary
+        for key, graph in self.graphs.items():
+            # Iterating over each drug and its targets in the drug_target_dict
+            for drug, targets in offtarget_dict.items():
+                # Checking if the drug name is present in the key
+                if drug.lower() in key.lower():
+                    # Counting how many targets are present in the nodes of the network
+                    target_count = sum(1 for target in targets if target in graph.nodes)
+                    all_offtargets = len(targets)
+                    perc_offtargets = (target_count / len(targets)) * 100
+                    # Appending the results to the list
+                    offtarget_results.append({'Graph ID': key, 'offtarget_count': target_count, 'all_offtargets': all_offtargets, 'perc_offtarget': perc_offtargets})
+
+        # Creating a DataFrame from the results list
+        offtarget_result_df = pd.DataFrame(offtarget_results)
+        self.graphdata_df = pd.merge(self.graphdata_df, offtarget_result_df, on="Graph ID")
+        
+        
+        
+
 
 
 
