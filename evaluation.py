@@ -5,17 +5,22 @@ import ptitprince as pt
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
+import itertools
+from path_calc import Solver    
+import umap
+import matplotlib.pyplot as plt
 
 class Eval:
-    def __init__(self, dirpath, study_id):
+    def __init__(self, G, tf_dict, dirpath, study_id):
         self.dirpath = dirpath
-        self.G = None
+        self.G = G
         self.study_id = study_id
-        self.target_dict = None
+        self.target_dict = tf_dict
         self.tests_dict = self.get_test_dict()
         self.graphs, self.graphdata_df = self.parse_sif_files()
         self.distance_df = None
         self.filtered_df = None
+        __super__ = Solver
 
     def get_datafiles(self):
         files_list = os.listdir(self.dirpath)
@@ -182,16 +187,14 @@ class Eval:
         edges_info = pd.DataFrame({'Graph ID': list(self.graphs.keys()), 'Number of edges': num_edges})
         self.graphdata_df = pd.merge(self.graphdata_df, edges_info, on="Graph ID")
 
-    def get_connected_targets(self, target_dict):
+    def get_connected_targets(self):
         """
         Given a network and a set of targets, compute how many targets are in the network (nodes)
         """
         num_targets = []
         for graph in self.graphs:
             iter_id = graph.split('__')[1]
-            cell_line = iter_id.split('_')[0]
-            drug = iter_id.split('_')[1]
-            targets = target_dict[cell_line][drug].keys()
+            targets = self.target_dict[iter_id].keys()
             num_targets.append(len(set(targets) & set(self.graphs[graph].nodes)))
         targets_info = pd.DataFrame({'Graph ID': list(self.graphs.keys()), 'Connected targets': num_targets})
         self.graphdata_df = pd.merge(self.graphdata_df, targets_info, on="Graph ID")
@@ -241,6 +244,7 @@ class Eval:
         methods = set(self.graphdata_df['Methods'].tolist())
         iterations = set(self.graphdata_df['Iteration'].tolist())
         filtered_df = pd.DataFrame()
+        print(self.target_dict)
 
         for iterat in iterations:
             for method in methods:
@@ -249,8 +253,9 @@ class Eval:
                 print(f"Processing {method} {iterat}...")
                 sorted_df = self.graphdata_df[(self.graphdata_df['Methods'] == method) & (self.graphdata_df['Iteration'] == iterat)].sort_values(by=['Pagerank Threshold'])
 
-                targets = self.target_dict[cell_line][drug].keys()
+                targets = self.target_dict[iterat].keys()
                 num_targets = len(targets)
+                print(num_targets)
                 # add column of missing targets
                 sorted_df['Perc missing targets'] = (num_targets - sorted_df['Connected targets']) / num_targets * 100
 
@@ -259,8 +264,16 @@ class Eval:
                 
                 selected_threshold_index = self.find_elbow(num_edges, perc_missing_targets)
                 # bind rows the selected threshold to the filtered df using pd.concat
-                threshold_0 = sorted_df[sorted_df['Pagerank Threshold'] == 0]
-                filtered_df = pd.concat([filtered_df, sorted_df.iloc[selected_threshold_index:selected_threshold_index+1, :], threshold_0])
+                threshold_100 = sorted_df[sorted_df['Pagerank Threshold'] == 100]
+                filtered_df = pd.concat([filtered_df, sorted_df.iloc[selected_threshold_index:selected_threshold_index+1, :], threshold_100])
+        
+        
+        filtered_df = filtered_df[~((filtered_df['Pagerank Threshold'] == 100) & (filtered_df['Methods'].str.contains('reachability, pagerank, reachability, allpaths')))]
+        
+        filtered_df.loc[filtered_df['Pagerank Threshold'] == 100, 'Methods'] = filtered_df['Methods'].apply(lambda x: x.replace('pagerank, ', ''))
+        filtered_df['cell_line'] = filtered_df['Iteration'].apply(lambda x: x.split('_')[0]).tolist()
+        filtered_df['drug'] = filtered_df['Iteration'].apply(lambda x: x.split('_')[1]).tolist()
+
         
         self.graphdata_df = filtered_df
     
@@ -284,9 +297,112 @@ class Eval:
         offtarget_result_df = pd.DataFrame(offtarget_results)
         self.graphdata_df = pd.merge(self.graphdata_df, offtarget_result_df, on="Graph ID")
         
+    def compute_overlap(self, iter):
+        subset_df = self.graphdata_df[self.graphdata_df['Iteration'] == iter]
+        print(subset_df)
+    
+    def degree_centrality(self):
+        degree_centrality = []
+
+        for graph in self.graphs:
+            degree_results = nx.degree_centrality(self.graphs[graph])
+            degree_centrality.append({'Graph ID': graph, 
+                                      'Degree centrality': degree_results, 
+                                      'Mean degree centrality': np.mean(list(degree_results.values()))})
+
+
+
+
+        degree_centrality_df = pd.DataFrame(degree_centrality)
+        self.graphdata_df = pd.merge(self.graphdata_df, degree_centrality_df, on="Graph ID")
+
+
+    def closeness_centrality(self):
+        closeness_centrality = []
+
+        for graph in self.graphs:
+            closeness_results = nx.closeness_centrality(self.graphs[graph])
+            closeness_centrality.append({'Graph ID': graph, 
+                                         'Closeness centrality': closeness_results, 
+                                         'Mean closeness centrality': np.mean(list(closeness_results.values()))})
+        closeness_centrality_df = pd.DataFrame(closeness_centrality)
+        self.graphdata_df = pd.merge(self.graphdata_df, closeness_centrality_df, on="Graph ID")
+    
+    def betweenness_centrality(self):
+        betweenness_centrality = []
+
+        for graph in self.graphs:
+            betweenness_results = nx.betweenness_centrality(self.graphs[graph])
+            betweenness_centrality.append({'Graph ID': graph, 
+                                           'Betweenness centrality': betweenness_results,
+                                           'Mean betweenness centrality': np.mean(list(betweenness_results.values()))})
+        betweenness_centrality_df = pd.DataFrame(betweenness_centrality)
+        self.graphdata_df = pd.merge(self.graphdata_df, betweenness_centrality_df, on="Graph ID")
+    
+    def compute_centrality_metrics(self):
+        print('Computing degree centrality')
+        self.degree_centrality()
+        print('Computing closeness centrality')
+        self.closeness_centrality()
+        print('Computing betweenness centrality')
+        self.betweenness_centrality()
+
+    def create_edge_matrix(self):
+        """
+        Creates a binary matrix representing the presence or absence of edges in each graph.
         
+        Parameters:
+        - graph_dict: dictionary
+            Keys are graph IDs and values are NetworkX graphs.
         
+        Returns:
+        - pandas DataFrame
+            Rows represent edges, columns represent graphs, values are binary.
+        """
+        # Extract all unique edges from all graphs
+        all_edges = set()
+        graph_ids = self.graphdata_df['Graph ID'].tolist()
+        #get only graphs present in the graph ids list
+        graph_dict = {k: v for k, v in self.graphs.items() if k in graph_ids}
+        for graph in graph_dict.values():
+            all_edges.update(graph.edges)
+        
+        # Sort edges for consistent ordering
+        all_edges = sorted(all_edges)
+        
+        # Create the matrix
+        matrix_data = []
+        for edge in all_edges:
+            row = []
+            for graph_id, graph in graph_dict.items():
+                row.append(1 if graph.has_edge(*edge) else 0)
+            matrix_data.append(row)
+        
+        # Create DataFrame
+        columns = list(graph_dict.keys())
+        edge_matrix = pd.DataFrame(matrix_data, columns=columns, index=all_edges)
+        
+        return edge_matrix
+    
+    def plot_umap(self, features):
+        edge_matrix = self.create_edge_matrix()
+        edge_metric_columns = edge_matrix.columns.tolist()
+        filtered_rundf = self.graphdata_df
+        # set Graph ID as index
+        filtered_rundf = filtered_rundf.set_index('Graph ID')
+        # sort the filtered_rundf by the order of the edge metric column ids and the Graph ID column from the filtered_rundf
+        filtered_rundf = filtered_rundf.reindex(index=edge_metric_columns)
+        # Applying UMAP to the edge matrix
+        reducer = umap.UMAP()
+        embedding = reducer.fit(edge_matrix.transpose())
 
+        for feature in features:
+            umap.plot.points(embedding, labels=filtered_rundf[feature])
+    
+    def plot_raincloud_plots(self, feature):
+        plt.figure(figsize=(15, 10))
+        ax = pt.RainCloud(data = self.graphdata_df, x = 'Methods', y = feature, palette = "Set2",
+                            orient = 'h', width_box= .1, width_viol=1)
+        ax.set_xticklabels(ax.get_xticklabels(), rotation=45,  ha='right')
 
-
-
+        plt.show()

@@ -72,7 +72,7 @@ class Solver:
                 
                 product_sign *= edge_sign
 
-            if (sign_consistent and source_sign * product_sign == target_sign) or not sign_consistent:
+            if (sign_consistent and np.sign(source_sign * product_sign) == np.sign(target_sign)) or not sign_consistent:
                 paths_res.append(path)
                 connected_targets[source].append(target) if target not in connected_targets[source] else None
                 for i in range(len(path) - 1):
@@ -120,24 +120,36 @@ class Solver:
             self.subG.nodes[node][attribute_name] = pr_value
         
         if personalize_for == "target" and self.is_reversed:
-            self.reverse_graph(self.subG)
+            self.subG = self.reverse_graph(self.subG)
 
 
-
-    def compute_overlap(self):
+    def compute_overlap(self, percentage=20):
         """
-        Compute the overlap of nodes that exceed the PageRank threshold from sources and targets.
+        Compute the overlap of nodes that exceed the PageRank percentage threshold from sources and targets.
 
         Returns:
             tuple: Contains nodes above threshold from sources, nodes above threshold from targets, and overlapping nodes.
         """
-        nodes_above_threshold_from_sources = {node for node, data in self.subG.nodes(data=True) if data.get('pagerank_from_sources') > self.threshold}
-        nodes_above_threshold_from_targets = {node for node, data in self.subG.nodes(data=True) if data.get('pagerank_from_targets') > self.threshold}
+        # Sorting nodes by PageRank score from sources and targets
+        sorted_nodes_sources = sorted(self.subG.nodes(data=True), key=lambda x: x[1].get('pagerank_from_sources', 0), reverse=True)
+        sorted_nodes_targets = sorted(self.subG.nodes(data=True), key=lambda x: x[1].get('pagerank_from_targets', 0), reverse=True)
+
+        # Calculating the number of nodes to keep
+        num_nodes_to_keep_sources = int(len(sorted_nodes_sources) * (percentage / 100))
+        num_nodes_to_keep_targets = int(len(sorted_nodes_targets) * (percentage / 100))
+
+        # Selecting the top nodes
+        nodes_above_threshold_from_sources = {node[0] for node in sorted_nodes_sources[:num_nodes_to_keep_sources]}
+        nodes_above_threshold_from_targets = {node[0] for node in sorted_nodes_targets[:num_nodes_to_keep_targets]}
+
         overlap = nodes_above_threshold_from_sources.intersection(nodes_above_threshold_from_targets)
         nodes_to_include = nodes_above_threshold_from_sources.union(nodes_above_threshold_from_targets)
+
         self.subG = self.subG.subgraph(nodes_to_include)
-        self.label = f'{self.label}__pagerank_{self.threshold}'
-        return nodes_above_threshold_from_sources, nodes_above_threshold_from_targets, overlap
+        self.label = f'{self.label}__pagerank_{percentage}'
+
+        return nodes_above_threshold_from_sources, nodes_above_threshold_from_targets, nodes_to_include
+
 
 
 
@@ -214,7 +226,14 @@ class Solver:
 
         with Pool(processes=num_processes) as pool:
             all_args = [(self.subG, source, targets, cutoff) for source in sources]
-            results = pool.map(self.compute_paths, all_args)
+            try:
+                results = pool.map(self.compute_paths, all_args)
+            except nx.NetworkXNoPath as e:
+                if verbose:
+                    print(f"Warning: {e}")
+            except nx.NodeNotFound as e:
+                if verbose:
+                    print(f"Warning: {e}")
 
         for i, source in enumerate(sources):
             paths_for_source, connected_targets_for_source = results[i]
@@ -304,7 +323,7 @@ class Solver:
             None
         """
         if len(paths) == 0:
-            print('There were no sign consistent paths for the given perturbations and downstream effects.')
+            print('The network is empty')
             return
 
         visualizer = GraphVisualizer(self)
@@ -332,7 +351,7 @@ class Solver:
 
 
 
-    def network_batchrun(self, iter, cutoff=3, initial_threshold=0.01):
+    def network_batchrun(self, iter, tf_dict, cutoff=3):
         """
         Executes a batch run for network analysis based on varying pagerank thresholds.
         Two execution threads are supported so far:
@@ -352,6 +371,14 @@ class Solver:
         self.label = f'{self.study_id}__{iter}'
         self.iter = iter
         self.subG = self.reachability_filter(self.G)
+        nodes = [node for node in self.subG.nodes()]
+
+        # subset the dict to only include nodes in the subG
+        tf_subset = tf_dict[iter]
+        target_dict = {k: v for k, v in tf_subset.items() if k in nodes}
+        # get the first 50 elements of the dict
+        target_dict_top50 = dict(itertools.islice(target_dict.items(), 50))
+        self.target_dict = target_dict_top50
         
         try:
             self.pagerank_solver(personalize_for='source')
@@ -362,28 +389,27 @@ class Solver:
         initial_subG = self.subG
         initial_label = self.label
     
-        self.threshold = initial_threshold
+        threshold_list = [1,3,5,7,10,20,30,40,50,60,70,80,90,100]
 
-        while self.threshold >= 0:
+        for threshold in threshold_list:
+            self.threshold = int(threshold)
             print('Computing path 1 with threshold', self.threshold)
             self.label = initial_label
             self.subG = initial_subG
-            self.compute_overlap()
+            self.compute_overlap(self.threshold)
             shortest_paths = self.shortest_paths()
             self.to_SIFfile(shortest_paths, title=f'./results/{self.label}.sif')
             self.visualize_graph(shortest_paths, title=self.label, is_sign_consistent=True)
             shortest_sc_paths = self.sign_consistency_check(shortest_paths)
             self.to_SIFfile(shortest_sc_paths, title=f'./results/{self.label}.sif')
             self.visualize_graph(shortest_sc_paths, title=self.label, is_sign_consistent=True)
-            self.threshold = round(self.threshold - 0.001, 3)
-        
-        self.threshold = initial_threshold
 
-        while self.threshold > 0:
+        for threshold in threshold_list:
+            self.threshold = int(threshold)
             print('Computing path 2 with threshold', self.threshold)
             self.label = initial_label
             self.subG = initial_subG
-            self.compute_overlap()
+            self.compute_overlap(self.threshold)
             self.subG = self.reachability_filter(self.subG)
             all_paths = self.all_paths(cutoff=cutoff)
             self.to_SIFfile(all_paths, title=f'./results/{self.label}.sif')
@@ -391,15 +417,9 @@ class Solver:
             all_sc_paths = self.sign_consistency_check(all_paths)
             self.to_SIFfile(all_sc_paths, title=f'./results/{self.label}.sif')
             self.visualize_graph(all_sc_paths, title=self.label, is_sign_consistent=True)
-            self.threshold = round(self.threshold - 0.001, 3)
 
         self.runinfo_df.to_csv(f'./results/{self.study_id}__{self.iter}__runinfo.csv', index=None)
 
-        # visualizer = GraphVisualizer(self)
-        # visualizer.visualize_qc_thresholds()
-        # visualizer.visualize_threshold_elbowplot()
-        # visualizer.visualize_degrees()
-        # visualizer.visualize_intersection()
 
 
 
