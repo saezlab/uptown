@@ -20,7 +20,8 @@ panacea_de_filtered <- panacea_de %>%
   # dplyr::rename(logFC = contains('logFC'),
   #               pval = contains('padj'),
   #               stat = contains('stat'))
-plot_list <- list() 
+plot_list <- list()
+mega_df <- tibble()
 
 for (i in 1:length(treatments)){
   treatment <- treatments[i]
@@ -31,6 +32,23 @@ for (i in 1:length(treatments)){
     separate_wider_delim(biocontext, delim = '_', names = c('cell_line', 'treatment', 'v', 'dmso1', 'dmso2')) %>%
     select(-dmso1, -v, -dmso2, -status, -pipeline, -main_dataset, -subset) %>%
     pivot_wider(names_from = statparam, values_from = value)
+  
+  # if there are less than 30 genes with abs(logFC) > 1.5 and pvalue<0.05, per cell line and treatment, remove the cell line-treatment combo
+  sig_cell_lines <- panacea_treatment_filtered %>%
+    group_by(cell_line, treatment) %>%
+    filter(abs(logFC) > 1.5 & padj < 0.05) %>%
+    count() %>% filter (n>30) %>%
+    pull(cell_line) %>% unique()
+
+  sig_data <- panacea_treatment_filtered %>% filter(cell_line %in% sig_cell_lines)
+  
+  mega_df <- bind_rows(mega_df, sig_data)
+}
+
+write_tsv(mega_df, 'panacea_de.tsv')
+  
+
+
 
   
   targets_drug <- panacea_targets %>% filter(cmpd == treatment) %>% select(target) %>% pull()
