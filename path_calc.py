@@ -8,6 +8,8 @@ import itertools
 import time
 import ptitprince as pt
 import statannot as st
+import string
+import random
 from pathos.multiprocessing import ProcessingPool as Pool
 
 
@@ -32,14 +34,9 @@ class Solver:
         self.threshold = None
         self.subG = None
         self.is_reversed = False
-        self.all_paths_res = []
-        self.connected_all_path_targets = {}
-        self.shortest_paths_res = []
-        self.pagerank_values = {}
-        self.connected_targets = {}
-        self.sc_paths_res = []
-        self.connected_sc_targets = {}
         self.runinfo_df = pd.DataFrame(columns=['label', 'elapsed_time'])
+        self.random = True
+        self.selected_targets_dict = {}
 
 
 
@@ -113,8 +110,6 @@ class Solver:
 
         pagerank = nx.pagerank(self.subG, alpha=alpha, max_iter=max_iter, personalization=personalized_prob, tol=tol, nstart=nstart, weight=weight, dangling=personalized_prob)
         
-        self.pagerank_values[personalize_for] = pagerank
-        
         for node, pr_value in pagerank.items():
             attribute_name = 'pagerank_from_targets' if personalize_for == "target" else 'pagerank_from_sources'
             self.subG.nodes[node][attribute_name] = pr_value
@@ -165,18 +160,18 @@ class Solver:
          """
         self.label = f'{self.label}__shortest'
         start_time = time.time()
-        self.shortest_paths_res = []
-        self.connected_targets = {}
+        shortest_paths_res = []
+        connected_targets = {}
         sources = list(self.source_dict.keys())
         targets = list(self.target_dict.keys())
         for source_node in sources:
-            if source_node not in self.connected_targets:
-                self.connected_targets[source_node] = []
+            if source_node not in connected_targets:
+                connected_targets[source_node] = []
 
             for target_node in targets:
                 try:
-                    self.shortest_paths_res.extend([p for p in nx.all_shortest_paths(self.subG, source=source_node, target=target_node, weight='weight')])
-                    self.connected_targets[source_node].append(target_node)
+                    shortest_paths_res.extend([p for p in nx.all_shortest_paths(self.subG, source=source_node, target=target_node, weight='weight')])
+                    connected_targets[source_node].append(target_node)
                 except nx.NetworkXNoPath as e:
                     if verbose:
                         print(f"Warning: {e}")
@@ -184,7 +179,7 @@ class Solver:
                     if verbose:
                         print(f"Warning: {e}")
 
-        self.subG, self.connected_targets, self.shortest_paths_res = self.get_subnetwork(self.shortest_paths_res, sign_consistent=False)
+        self.subG, connected_targets, shortest_paths_res = self.get_subnetwork(shortest_paths_res, sign_consistent=False)
 
         end_time = time.time()
         elapsed_time = end_time - start_time
@@ -192,7 +187,7 @@ class Solver:
         runinfo_entry = pd.Series({'label': self.label, 'elapsed_time': elapsed_time}).to_frame().transpose()
         self.runinfo_df = pd.concat([self.runinfo_df, runinfo_entry], ignore_index=True)
 
-        return self.shortest_paths_res
+        return shortest_paths_res
 
     def compute_paths(self, args):
         G, source, targets, cutoff = args
@@ -219,8 +214,8 @@ class Solver:
         """
         self.label = f'{self.label}__allpaths'
         start_time = time.time()
-        self.all_paths_res = []
-        self.connected_all_path_targets = {}
+        all_paths_res = []
+        connected_all_path_targets = {}
         sources = list(self.source_dict.keys())
         targets = list(self.target_dict.keys())
 
@@ -237,10 +232,10 @@ class Solver:
 
         for i, source in enumerate(sources):
             paths_for_source, connected_targets_for_source = results[i]
-            self.all_paths_res.extend(paths_for_source)
-            self.connected_all_path_targets[source] = connected_targets_for_source
+            all_paths_res.extend(paths_for_source)
+            connected_all_path_targets[source] = connected_targets_for_source
 
-        self.subG, self.connected_all_path_targets, self.all_paths_res = self.get_subnetwork(self.all_paths_res, sign_consistent=False)
+        self.subG, connected_all_path_targets, all_paths_res = self.get_subnetwork(all_paths_res, sign_consistent=False)
 
         end_time = time.time()
         elapsed_time = end_time - start_time
@@ -248,7 +243,7 @@ class Solver:
         runinfo_entry = pd.Series({'label': self.label, 'elapsed_time': elapsed_time}).to_frame().transpose()
         self.runinfo_df = pd.concat([self.runinfo_df, runinfo_entry], ignore_index=True)
 
-        return self.all_paths_res
+        return all_paths_res
 
     
 
@@ -265,14 +260,14 @@ class Solver:
         self.label = f'{self.label}__sc'
         start_time = time.time()
 
-        self.subG, self.connected_sc_targets, self.sc_paths_res = self.get_subnetwork(paths, sign_consistent=True)
+        self.subG, connected_sc_targets, sc_paths_res = self.get_subnetwork(paths, sign_consistent=True)
         
         end_time = time.time()
         elapsed_time = end_time - start_time
         runinfo_entry = pd.Series({'label': self.label, 'elapsed_time': elapsed_time}).to_frame().transpose()
         self.runinfo_df = pd.concat([self.runinfo_df, runinfo_entry], ignore_index=True)
 
-        return self.sc_paths_res
+        return sc_paths_res
 
 
 
@@ -351,7 +346,7 @@ class Solver:
 
 
 
-    def network_batchrun(self, iter, tf_dict, cutoff=3):
+    def network_batchrun(self, iter, random_ident, tf_dict, number_tfs, cutoff=3):
         """
         Executes a batch run for network analysis based on varying pagerank thresholds.
         Two execution threads are supported so far:
@@ -368,7 +363,7 @@ class Solver:
         """
 
         
-        self.label = f'{self.study_id}__{iter}'
+        self.label = f'{self.study_id}__{random_ident}__{iter}'
         self.iter = iter
         self.subG = self.reachability_filter(self.G)
         nodes = [node for node in self.subG.nodes()]
@@ -376,9 +371,23 @@ class Solver:
         # subset the dict to only include nodes in the subG
         tf_subset = tf_dict[iter]
         target_dict = {k: v for k, v in tf_subset.items() if k in nodes}
-        # get the first 50 elements of the dict
-        target_dict_top50 = dict(itertools.islice(target_dict.items(), 50))
-        self.target_dict = target_dict_top50
+        # get the first n elements of the dict
+        target_dict_top = dict(itertools.islice(target_dict.items(), number_tfs))
+        if len(target_dict_top) < number_tfs:
+            print(f"There are not enough reachable targets, skipping.")
+            return
+        
+        # null control
+        if self.random:
+            try:
+                random_keys = random.sample(target_dict.keys(), number_tfs)
+                target_dict_top = dict(zip(random_keys, target_dict_top.values()))
+            except ValueError as e:
+                print(f"There are not enough reachable targets, skipping. {e}")
+                return
+        
+        self.target_dict = target_dict_top
+        self.selected_targets_dict[self.label] = target_dict_top
         
         try:
             self.pagerank_solver(personalize_for='source')
@@ -419,10 +428,6 @@ class Solver:
             self.visualize_graph(all_sc_paths, title=self.label, is_sign_consistent=True)
 
         self.runinfo_df.to_csv(f'./results/{self.study_id}__{self.iter}__runinfo.csv', index=None)
-
-
-
-
 
 
 

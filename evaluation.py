@@ -283,6 +283,8 @@ class Eval:
         # Iterating over each key in the network dictionary
         for key, graph in self.graphs.items():
             # Iterating over each drug and its targets in the drug_target_dict
+            number_nodes = len(graph.nodes)
+            number_edges = len(graph.edges)
             for drug, targets in offtarget_dict.items():
                 # Checking if the drug name is present in the key
                 if drug.lower() in key.lower():
@@ -290,8 +292,10 @@ class Eval:
                     target_count = sum(1 for target in targets if target in graph.nodes)
                     all_offtargets = len(targets)
                     perc_offtargets = (target_count / len(targets)) * 100
+                    perc_offtargets_nodes = (target_count / number_nodes) * 100
+                    perc_offtargets_edges = (target_count / number_edges) * 100
                     # Appending the results to the list
-                    offtarget_results.append({'Graph ID': key, 'offtarget_count': target_count, 'all_offtargets': all_offtargets, 'perc_offtarget': perc_offtargets})
+                    offtarget_results.append({'Graph ID': key, 'offtarget_count': target_count, 'all_offtargets': all_offtargets, 'perc_offtarget': perc_offtargets, 'perc_offtarget_nodes': perc_offtargets_nodes, 'perc_offtarget_edges': perc_offtargets_edges})
 
         # Creating a DataFrame from the results list
         offtarget_result_df = pd.DataFrame(offtarget_results)
