@@ -1,9 +1,5 @@
 #!/bin/bash
-#SBATCH --account=hd_mh280
 #SBATCH --job-name PANACEA_networkcalc
-#SBATCH --nodes 1
-#SBATCH --ntasks 16
-#SBATCH --mem 40GB
 #SBATCH --time 7-00:00:00
 #SBATCH --mail-type=FAIL,END
 
@@ -13,7 +9,9 @@ echo "STARTING JOB"
 
 source ${HOME}/.bashrc
 conda activate mthesis
+cd /net/data.isilon/ag-saez/bq_vpaton/mthesis
 
-python3 PANACEA_analysis_cluster.py
+# Executing an R script
+nextflow -C PANACEA_network.config run PANACEA_network_calc.nf -resume -profile cluster --network network_collectri.sif --source_file panacea_sources.tsv --tf_file tf_activity_results.tsv --iterations 1000
 
 echo "FINISHED JOB"
