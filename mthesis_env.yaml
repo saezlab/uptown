@@ -1,0 +1,19 @@
+name: mthesis
+channels:
+  - defaults
+  - bioconda
+dependencies:
+  - networkx=3.1
+  - numpy-base=1.26.0
+  - pandas=2.1.1
+  - pip=23.3
+  - python=3.10.13
+  - nextflow=23.10.0
+  - pygraphviz=1.9
+  - pip:
+      - decoupler==1.5.0
+      - pathos==0.3.1
+      - ptitprince==0.2.7
+      - scipy==1.11.3
+      - seaborn==0.11.0
+      - 
