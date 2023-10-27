@@ -3,11 +3,9 @@ import networkx as nx
 import numpy as np
 from matplotlib import pyplot as plt
 import os
-from upsetplot import plot
 import itertools
 import time
 import ptitprince as pt
-import statannot as st
 import string
 import random
 from pathos.multiprocessing import ProcessingPool as Pool
@@ -292,7 +290,6 @@ class Solver:
         Returns:
             DataFrame: A dataframe containing the SIF representation.
         """
-        os.makedirs('./results', exist_ok=True)
         sif_tuples = []
         for path in paths:
             for i in range(len(path) - 1):
@@ -407,10 +404,10 @@ class Solver:
             self.subG = initial_subG
             self.compute_overlap(self.threshold)
             shortest_paths = self.shortest_paths()
-            self.to_SIFfile(shortest_paths, title=f'./results/{self.label}.sif')
+            self.to_SIFfile(shortest_paths, title=f'{self.label}.sif')
             self.visualize_graph(shortest_paths, title=self.label, is_sign_consistent=True)
             shortest_sc_paths = self.sign_consistency_check(shortest_paths)
-            self.to_SIFfile(shortest_sc_paths, title=f'./results/{self.label}.sif')
+            self.to_SIFfile(shortest_sc_paths, title=f'{self.label}.sif')
             self.visualize_graph(shortest_sc_paths, title=self.label, is_sign_consistent=True)
 
         for threshold in threshold_list:
@@ -421,13 +418,13 @@ class Solver:
             self.compute_overlap(self.threshold)
             self.subG = self.reachability_filter(self.subG)
             all_paths = self.all_paths(cutoff=cutoff)
-            self.to_SIFfile(all_paths, title=f'./results/{self.label}.sif')
+            self.to_SIFfile(all_paths, title=f'{self.label}.sif')
             self.visualize_graph(all_paths, title=self.label, is_sign_consistent=True)
             all_sc_paths = self.sign_consistency_check(all_paths)
-            self.to_SIFfile(all_sc_paths, title=f'./results/{self.label}.sif')
+            self.to_SIFfile(all_sc_paths, title=f'{self.label}.sif')
             self.visualize_graph(all_sc_paths, title=self.label, is_sign_consistent=True)
 
-        self.runinfo_df.to_csv(f'./results/{self.study_id}__{self.iter}__runinfo.csv', index=None)
+        self.runinfo_df.to_csv(f'{self.study_id}__{self.iter}__runinfo.csv', index=None)
 
 
 
@@ -465,7 +462,6 @@ class GraphVisualizer:
             title (str, optional): Filename for the visualization. Defaults to "Graph".
             is_sign_consistent (bool, optional): If True, only visualize sign consistent paths. Defaults to True.
         """
-        os.makedirs('./results', exist_ok=True)
 
         V = nx.DiGraph()
 
@@ -537,7 +533,7 @@ class GraphVisualizer:
             edge.attr['color'] = edge_color
         
         A.layout(prog='dot')
-        file_path = f'./results/{title}.pdf'
+        file_path = f'{title}.pdf'
         A.draw(file_path, prog='dot')
 
 
@@ -762,7 +758,7 @@ class GraphVisualizer:
         import itertools
         from upsetplot import plot
         
-        directory = './results/'
+        directory = ''
         
         expected_files = [f'{self.study_id}__{self.iter}__reachability{threshold}.sif' 
                         for threshold in self.selected_thresholds]

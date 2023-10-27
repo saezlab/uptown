@@ -167,3 +167,8 @@ cython_debug/
 *.txt
 *.tsv
 *.png
+.nextflow/
+.nextflow.*
+*.html
+*.log
+work/
