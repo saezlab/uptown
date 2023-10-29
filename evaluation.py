@@ -7,20 +7,34 @@ import numpy as np
 import seaborn as sns
 import itertools
 from path_calc import Solver    
-import umap
+# import umap
 import matplotlib.pyplot as plt
 
 class Eval:
-    def __init__(self, G, tf_dict, dirpath, study_id):
+    def __init__(self, G, dirpath, study_id):
         self.dirpath = dirpath
         self.G = G
         self.study_id = study_id
-        self.target_dict = tf_dict
-        self.tests_dict = self.get_test_dict()
+        # self.tests_dict = self.get_test_dict()
         self.graphs, self.graphdata_df = self.parse_sif_files()
+        self.target_dict = self.get_target_dict()
         self.distance_df = None
         self.filtered_df = None
         __super__ = Solver
+    
+    def get_target_dict(self):
+        self.target_dict = {}
+        biocontexts = set(self.graphdata_df.Biocontext)
+        random_labels = set(self.graphdata_df.Random)
+        for random_label in random_labels:
+            for biocontext in biocontexts:
+                filename = f'{self.dirpath}{self.study_id}_{random_label}_{biocontext}_selectedtargets.csv'
+                # convert df to dictionary and append to target dict
+                df = pd.read_csv(filename, index_col=0)
+                target_dict = df.to_dict()
+                self.target_dict.update(target_dict)
+        return self.target_dict
+
 
     def get_datafiles(self):
         files_list = os.listdir(self.dirpath)
@@ -57,7 +71,8 @@ class Eval:
         # Lists to store the metadata
         graph_ids = []
         study_ids = []
-        iter_ids = []
+        random_ids = []
+        biocontext_ids = []
         methods_list = []
         pagerank_thresholds = []
 
@@ -89,9 +104,10 @@ class Eval:
             # Metadata extraction
             parts = graph_id.split('__')
             study_ids.append(parts[0])
-            iter_ids.append(parts[1])
+            random_ids.append(parts[1])
+            biocontext_ids.append(parts[2])
             
-            method_parts = parts[2:]
+            method_parts = parts[3:]
             pagerank_value = None
             for idx, part in enumerate(method_parts):
                 if "pagerank" in part:
@@ -105,12 +121,13 @@ class Eval:
         metadata_df = pd.DataFrame({
             'Graph ID': graph_ids,
             'Study ID': study_ids,
-            'Iteration': iter_ids,
+            'Random': random_ids,
+            'Biocontext': biocontext_ids,
             'Methods': methods_list,
             'Pagerank Threshold': pagerank_thresholds
         })
 
-        metadata_df.sort_values(by=['Study ID', 'Iteration', 'Methods', 'Pagerank Threshold'], inplace=True)
+        metadata_df.sort_values(by=['Study ID', 'Random', 'Biocontext', 'Methods', 'Pagerank Threshold'], inplace=True)
         
         return graphs, metadata_df
     
@@ -193,7 +210,8 @@ class Eval:
         """
         num_targets = []
         for graph in self.graphs:
-            iter_id = graph.split('__')[1]
+            parts = graph.split('__')
+            iter_id = '__'.join(parts[0:4])
             targets = self.target_dict[iter_id].keys()
             num_targets.append(len(set(targets) & set(self.graphs[graph].nodes)))
         targets_info = pd.DataFrame({'Graph ID': list(self.graphs.keys()), 'Connected targets': num_targets})
@@ -242,37 +260,40 @@ class Eval:
         num_edges = []
 
         methods = set(self.graphdata_df['Methods'].tolist())
-        iterations = set(self.graphdata_df['Iteration'].tolist())
+        random_ids = set(self.graphdata_df['Random'].tolist())
+        biocontexts = set(self.graphdata_df['Biocontext'].tolist())
         filtered_df = pd.DataFrame()
-        print(self.target_dict)
-
-        for iterat in iterations:
-            for method in methods:
-                drug = iterat.split('_')[1]
-                cell_line = iterat.split('_')[0]
-                print(f"Processing {method} {iterat}...")
-                sorted_df = self.graphdata_df[(self.graphdata_df['Methods'] == method) & (self.graphdata_df['Iteration'] == iterat)].sort_values(by=['Pagerank Threshold'])
-
-                targets = self.target_dict[iterat].keys()
-                num_targets = len(targets)
-                print(num_targets)
-                # add column of missing targets
-                sorted_df['Perc missing targets'] = (num_targets - sorted_df['Connected targets']) / num_targets * 100
-
-                perc_missing_targets = sorted_df['Perc missing targets'].tolist()
-                num_edges = sorted_df['Number of edges'].tolist()
-                
-                selected_threshold_index = self.find_elbow(num_edges, perc_missing_targets)
-                # bind rows the selected threshold to the filtered df using pd.concat
-                threshold_100 = sorted_df[sorted_df['Pagerank Threshold'] == 100]
-                filtered_df = pd.concat([filtered_df, sorted_df.iloc[selected_threshold_index:selected_threshold_index+1, :], threshold_100])
         
-        
+        for random_id in random_ids:
+            for biocontext in biocontexts:
+                for method in methods:
+                    drug = biocontext.split('_')[1]
+                    cell_line = biocontext.split('_')[0]
+                    # print(f"Processing {method} {biocontext} {random_id}...")
+                    sorted_df = self.graphdata_df[(self.graphdata_df['Methods'] == method) & (self.graphdata_df['Biocontext'] == biocontext) & (self.graphdata_df['Random'] == random_id)].sort_values(by=['Pagerank Threshold'])
+                    parts = set(sorted_df['Graph ID'].tolist())
+                    iter_id = '__'.join(parts.pop().split('__')[0:4])
+
+                    targets = self.target_dict[iter_id].keys()
+                    num_targets = len(targets)
+                    # print(num_targets)
+                    
+                    # add column of missing targets
+                    sorted_df['Perc missing targets'] = (num_targets - sorted_df['Connected targets']) / num_targets * 100
+
+                    perc_missing_targets = sorted_df['Perc missing targets'].tolist()
+                    num_edges = sorted_df['Number of edges'].tolist()
+                    
+                    selected_threshold_index = self.find_elbow(num_edges, perc_missing_targets)
+                    # bind rows the selected threshold to the filtered df using pd.concat
+                    threshold_100 = sorted_df[sorted_df['Pagerank Threshold'] == 100]
+                    filtered_df = pd.concat([filtered_df, sorted_df.iloc[selected_threshold_index:selected_threshold_index+1, :], threshold_100])
+            
         filtered_df = filtered_df[~((filtered_df['Pagerank Threshold'] == 100) & (filtered_df['Methods'].str.contains('reachability, pagerank, reachability, allpaths')))]
         
         filtered_df.loc[filtered_df['Pagerank Threshold'] == 100, 'Methods'] = filtered_df['Methods'].apply(lambda x: x.replace('pagerank, ', ''))
-        filtered_df['cell_line'] = filtered_df['Iteration'].apply(lambda x: x.split('_')[0]).tolist()
-        filtered_df['drug'] = filtered_df['Iteration'].apply(lambda x: x.split('_')[1]).tolist()
+        filtered_df['cell_line'] = filtered_df['Biocontext'].apply(lambda x: x.split('_')[0]).tolist()
+        filtered_df['drug'] = filtered_df['Biocontext'].apply(lambda x: x.split('_')[1]).tolist()
 
         
         self.graphdata_df = filtered_df
@@ -282,6 +303,9 @@ class Eval:
 
         # Iterating over each key in the network dictionary
         for key, graph in self.graphs.items():
+            # check if the graph is in the graphdata_df
+            if key not in self.graphdata_df['Graph ID'].tolist():
+                continue
             # Iterating over each drug and its targets in the drug_target_dict
             number_nodes = len(graph.nodes)
             number_edges = len(graph.edges)
