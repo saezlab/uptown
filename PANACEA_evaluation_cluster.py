@@ -5,8 +5,26 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import networkx as nx
+import argparse
 
-network_file = 'network_collectri.sif'
+parser = argparse.ArgumentParser(description='PANACEA analysis')
+parser.add_argument('-n', '--network', help='network file', required=True)
+parser.add_argument('-t', '--tf', help='tf activity file', required=True) #tf_activity_results.tsv
+parser.add_argument('-r', '--random', help='random_label', required=True)
+parser.add_argument('-b', '--bio_context', help='combination cell_line-drug', required=True)
+parser.add_argument('-d', '--dirpath', help='directory path', required=True)
+parser.add_argument('-o', '--offtargets', help='offtargets file', required=True)
+
+args = parser.parse_args()
+
+network_file = args.network
+tf_file = args.tf
+random_label = args.random
+bio_context = args.bio_context
+dirpath = args.dirpath
+offtargets_file = args.offtargets
+
+
 
 G = nx.read_weighted_edgelist(network_file, delimiter = '\t', create_using = nx.DiGraph)
 for u, v, data in G.edges(data=True):
@@ -14,7 +32,7 @@ for u, v, data in G.edges(data=True):
     data['sign'] = 1 if weight >= 0 else -1
     data['weight'] = abs(weight)
 
-offtargets_df = pd.read_csv('panacea_offtargets.tsv', sep='\t')
+offtargets_df = pd.read_csv(offtargets_file, sep='\t')
 offtarget_dict = {}
 
 # Iterate over each row in the DataFrame
@@ -32,7 +50,10 @@ for index, row in offtargets_df.iterrows():
         offtarget_dict[drug] = [target]
 
 
-G_eval = Eval(G, './results/', 'PANACEA')
+G_eval = Eval(G, dirpath, 'PANACEA', bio_context, random_label)
+# if there are no graphs in dictionary, finish execution
+if not G_eval.graphs:
+    exit()
 G_eval.graphdata_df
 G_eval.get_number_nodes()
 G_eval.get_number_edges()
@@ -41,4 +62,4 @@ G_eval.threshold_filter()
 G_eval.compute_centrality_metrics()
 G_eval.get_returned_offtargets(offtarget_dict)
 
-G_eval.graphdata_df.to_csv('PANACEA_graphdata_df.csv', index=False)
+G_eval.graphdata_df.to_csv(f'PANACEA_{random_label}_{bio_context}_graphdata_df.csv', index=False)

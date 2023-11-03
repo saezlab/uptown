@@ -11,34 +11,36 @@ from path_calc import Solver
 import matplotlib.pyplot as plt
 
 class Eval:
-    def __init__(self, G, dirpath, study_id):
+    def __init__(self, G, dirpath, study_id, biocontext, random_label):
         self.dirpath = dirpath
         self.G = G
         self.study_id = study_id
+        self.biocontext = biocontext
+        self.random_label = random_label
         # self.tests_dict = self.get_test_dict()
         self.graphs, self.graphdata_df = self.parse_sif_files()
         self.target_dict = self.get_target_dict()
         self.distance_df = None
-        self.filtered_df = None
         __super__ = Solver
     
     def get_target_dict(self):
         self.target_dict = {}
-        biocontexts = set(self.graphdata_df.Biocontext)
-        random_labels = set(self.graphdata_df.Random)
-        for random_label in random_labels:
-            for biocontext in biocontexts:
-                filename = f'{self.dirpath}{self.study_id}_{random_label}_{biocontext}_selectedtargets.csv'
-                # convert df to dictionary and append to target dict
-                df = pd.read_csv(filename, index_col=0)
-                target_dict = df.to_dict()
-                self.target_dict.update(target_dict)
-        return self.target_dict
+        try:
+            filename = f'./{self.dirpath}/{self.study_id}_{self.random_label}_{self.biocontext}_selectedtargets.csv'
+            # convert df to dictionary and append to target dict
+            df = pd.read_csv(filename, index_col=0)
+            
+            target_dict = df.to_dict()
+            self.target_dict.update(target_dict)
+            return self.target_dict
+        except FileNotFoundError:
+            return
+
 
 
     def get_datafiles(self):
         files_list = os.listdir(self.dirpath)
-        sif_files = [os.path.join(self.dirpath, f) for f in files_list if (f.endswith('.sif') and (self.study_id in f))]
+        sif_files = [os.path.join(self.dirpath, f) for f in files_list if (f.endswith('.sif') and (self.study_id in f) and (self.random_label in f) and (self.biocontext in f))]
         return sif_files
     
     def get_test_dict(self):
@@ -77,6 +79,9 @@ class Eval:
         pagerank_thresholds = []
 
         file_paths = self.get_datafiles()
+        # if it is emmpty, finish execution
+        if not file_paths:
+            return None, None
         
         for file_path in file_paths:
             # Extract the filename without the .sif extension
@@ -320,7 +325,9 @@ class Eval:
                     perc_offtargets_edges = (target_count / number_edges) * 100
                     # Appending the results to the list
                     offtarget_results.append({'Graph ID': key, 'offtarget_count': target_count, 'all_offtargets': all_offtargets, 'perc_offtarget': perc_offtargets, 'perc_offtarget_nodes': perc_offtargets_nodes, 'perc_offtarget_edges': perc_offtargets_edges})
-
+            # if the drug is not present in the offtarget_dict, append NA to the offtarget_results
+            if not any(drug.lower() in key.lower() for drug in offtarget_dict.keys()):
+                offtarget_results.append({'Graph ID': key, 'offtarget_count': np.nan, 'all_offtargets': np.nan, 'perc_offtarget': np.nan, 'perc_offtarget_nodes': np.nan, 'perc_offtarget_edges': np.nan})
         # Creating a DataFrame from the results list
         offtarget_result_df = pd.DataFrame(offtarget_results)
         self.graphdata_df = pd.merge(self.graphdata_df, offtarget_result_df, on="Graph ID")
