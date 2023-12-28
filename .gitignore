@@ -173,3 +173,5 @@ cython_debug/
 *.log
 work/
 decryptm/*
+decryptm_old/*
+*.rar
