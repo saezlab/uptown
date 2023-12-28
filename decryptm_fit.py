@@ -15,10 +15,10 @@ def find_files(root_dir, filename):
 
 # Uso de la función
 root_dir = './decryptm'  # reemplaza esto con tu directorio raíz
-filename = 'psm.tsv'
+filename = 'ratio_single-site_MD.tsv'
 matches = find_files(root_dir, filename)
 
-experimental_summary = pd.ExcelFile('./decryptm/Experiment_summary.xlsx')
+experimental_summary = pd.ExcelFile('./decryptm_old/Experiment_summary.xlsx')
 
 # get PTMs tab
 ptm_summary = experimental_summary.parse('PTMs')
@@ -46,21 +46,10 @@ for match in matches:
 
     # get id from splitting path by /
     id = match.split('/')[2]
-    # log transformation of sample 1
-    df["sample-01"] = np.log2(df["sample-01"])
-    for i in range(2, 12):
-        sample_col = f"sample-{str(i).zfill(2)}"
-        if sample_col in df.columns:
-            # log transformation
-            df[sample_col] = np.log2(df[sample_col])
-            df[sample_col] = df[sample_col] / df["sample-01"]
 
     columns_of_interest = [f"sample-{str(i).zfill(2)}" for i in range(2, 12)]
 
-    df[columns_of_interest] = df[columns_of_interest].apply(lambda x: (x - min(x)) / (max(x) - min(x)), axis=1)
-
     # remove sample-01 column
-    df.drop(columns=["sample-01"], inplace=True)
     df['runid'] = id
     # rename conc columns
     # remove rows with at least 1 nan in the sample columns
@@ -97,31 +86,23 @@ df[['analysistype', 'cell_line', 'drug', 'time', 'rep']] = df['runid'].str.split
 #        'Mapped Genes', 'Mapped Proteins', 'Quan Usage',
 #        'Modified Peptide', 'Protein ID', 'Gene', 'runid', 'analysistype', 'cell_line', 'drug', 'time', 'rep']
 
-df_columns = ['Modified Peptide',
-       'Retention', # same proteins can elute at different times, that's why we keep this column, to prevent duplicates
-       'Assigned Modifications',
-       'Protein ID', 'Gene', 'runid',
+df_columns = [
+    #    'Modified Peptide',
+    #    'Retention', # same proteins can elute at different times, that's why we keep this column, to prevent duplicates
+    #    'Assigned Modifications',
+       'Index', 'Gene', 'runid',
        'analysistype', 'cell_line', 'drug', 'time', 'rep']
 
-df.drop(columns=['Spectrum', 'Spectrum File', 'Peptide',
-       'Extended Peptide', 'Prev AA', 'Next AA', 'Peptide Length', 'Charge',
-       'Observed Mass', 'Calibrated Observed Mass',
-       'Observed M/Z', 'Calibrated Observed M/Z', 'Calculated Peptide Mass',
-       'Calculated M/Z', 'Delta Mass', 'Expectation', 'Hyperscore',
-       'Nextscore', 'PeptideProphet Probability',
-       'Number of Enzymatic Termini', 'Number of Missed Cleavages',
-       'Protein Start', 'Protein End', 'Intensity',
-       'M:15.9949', 'M:15.9949 Best Localization',
-       'STY:79.9663', 'STY:79.9663 Best Localization', 'Purity', 'Is Unique',
-       'Protein', 'Entry Name', 'Protein Description',
-       'Mapped Genes', 'Mapped Proteins', 'Quan Usage'], inplace=True)
+df_columns = ['Index', 'Gene', 'runid', 'analysistype', 'cell_line', 'drug',
+       'time', 'rep']
+
 # pass to long format
 longf_df = pd.melt(df, id_vars=df_columns,
              var_name='sample', value_name='ratio')
 
 longf_df['conc'] = longf_df['sample'].map(concentrations_dict)
 
-longf_df.to_csv('detected_peptides_long.csv', index=False)
+longf_df.to_csv('detected_peptides_long_MD.csv', index=False)
 
 longdf_martin = pd.read_csv('detected_peptides_long.csv')
 
@@ -131,9 +112,6 @@ longdf_size = longf_df.groupby(df_columns).size().reset_index(name='counts')
 longdf_size[longdf_size['counts'] != 10]
 
 # count nmber of rows per peptide, gene, drug, cell_line and rep in the df object
-df.groupby(['Modified Peptide', 'Protein ID', 'Gene', 'drug', 'cell_line', 'rep']).size().reset_index(name='counts')
-
-test = longdf_martin[(longdf_martin['Modified Peptide'] == 'n[230]RHS[167]PPGR') & (longdf_martin['Gene'] == 'PCNX3') & (longdf_martin['drug'] == 'Afatinib') & (longdf_martin['cell_line'] == 'A431') & (longdf_martin['rep'] == 'R4')]
 
 longf_df = longf_df[longf_df['Gene'].isin(collectri_tfs)]
 
@@ -236,43 +214,42 @@ def fit_logistic_function(y_data, x_data, x_interpolated=None, curve_guess=None,
 # using the concentrations dict, create a new column with the concentration for each sample
 
 
-
+longf_df
 # per gene, drug and cell_line, fit logistic curve
 # create empty df
-fit_params = pd.DataFrame(columns=['Gene', 'Drug', 'Cell_line', 'rep', 'log_ec50', 'slope', 'top', 'bottom', 'rsq', 'rmse', 'log_ec50_error', 'slope_error', 'top_error', 'bottom_error'])
+fit_params = pd.DataFrame(columns=['Index', 'Gene', 'Drug', 'Cell_line', 'rep', 'log_ec50', 'slope', 'top', 'bottom', 'rsq', 'rmse', 'log_ec50_error', 'slope_error', 'top_error', 'bottom_error'])
 
 
 # get unique combinations of gene, drug and cell_line
-unique_combinations = longf_df[['Modified Peptide', 'Gene', 'drug', 'cell_line', 'rep']].drop_duplicates()
+unique_combinations = longf_df[['Index', 'Gene', 'drug', 'cell_line', 'rep']].drop_duplicates()
 
 
 for comb in unique_combinations.values:
-    peptide, gene, drug, cell_line, rep = comb
-    x_data = longf_df[(longf_df['Modified Peptide'] == peptide) & (longf_df['Gene'] == gene) & (longf_df['drug'] == drug) & (longf_df['cell_line'] == cell_line) & (longf_df['rep'] == rep)]['conc'].values
-    y_data = longf_df[(longf_df['Modified Peptide'] == peptide) & (longf_df['Gene'] == gene) & (longf_df['drug'] == drug) & (longf_df['cell_line'] == cell_line) & (longf_df['rep'] == rep)]['ratio']
-    log_ec50, slope, top, bottom, r2, rmse, log_ec50_error, slope_error, top_error, bottom_error = fit_logistic_function(x_data=x_data, y_data=y_data, curve_guess=[np.median(x_data), 1, min(y_data), max(y_data)])
+    psite, gene, drug, cell_line, rep = comb
+    x_data = np.log10(longf_df[(longf_df['Index'] == psite) & (longf_df['Gene'] == gene) & (longf_df['drug'] == drug) & (longf_df['cell_line'] == cell_line) & (longf_df['rep'] == rep)]['conc'].values)
+    y_data = longf_df[(longf_df['Index'] == psite) & (longf_df['Gene'] == gene) & (longf_df['drug'] == drug) & (longf_df['cell_line'] == cell_line) & (longf_df['rep'] == rep)]['ratio']
+    log_ec50, slope, top, bottom, r2, rmse, log_ec50_error, slope_error, top_error, bottom_error = fit_logistic_function(x_data=x_data, y_data=y_data, curve_guess=[np.median(x_data), 1, 0, 0])
 
 
-    fit_params = fit_params.append({'Peptide': peptide, 'Gene': gene, 'Drug': drug, 'Cell_line': cell_line, 'rep': rep, 'log_ec50': log_ec50, 'slope': slope, 'top': top, 
-                                    'bottom': bottom, 'rsq': r2, 'rmse': rmse, 'log_ec50_error': log_ec50_error, 'slope_error': slope_error, 
-                                    'top_error': top_error, 'bottom_error': bottom_error}, ignore_index=True)
+    # fit_params = fit_params.append({'Index': psite, 'Gene': gene, 'Drug': drug, 'Cell_line': cell_line, 'rep': rep, 'log_ec50': log_ec50, 'slope': slope, 'top': top, 
+    #                                 'bottom': bottom, 'rsq': r2, 'rmse': rmse, 'log_ec50_error': log_ec50_error, 'slope_error': slope_error, 
+    #                                 'top_error': top_error, 'bottom_error': bottom_error}, ignore_index=True)
     
     # # plot the fit
-    # if r2 > 0.8:
-    #     plt.figure()
-    #     plt.scatter(x_data, y_data)
-    #     plt.plot(x_data, logistic_model(x_data, log_ec50, slope, top, bottom))
-    #     plt.title(f"{gene} {drug} {cell_line}")
-    #     # x axis as log
-    #     plt.xscale('log')
-    #     # plt.savefig(f"{gene}_{drug}_{cell_line}.png")
-    #     plt.show()
+    if r2 > 0.8:
+        plt.figure()
+        plt.scatter(x_data, y_data)
+        plt.plot(x_data, logistic_model(x_data, log_ec50, slope, top, bottom))
+        plt.title(f"{psite} {drug} {cell_line}")
+        # x axis as log
+        # plt.savefig(f"{gene}_{drug}_{cell_line}.png")
+        plt.show()
 
 
 
 # save fitted curves and parameters
-fit_params.to_csv('fit_params_peptide_rep_nc.csv', index=False)
+fit_params.to_csv('fit_params_peptide_rep_MD.csv', index=False)
 
 
 # 131 genes with peptides with at least r2 > 0.8
-len(fit_params['Gene'][fit_params['rsq'] > 0.8].unique())
+len(fit_params[fit_params['rsq'] > 0.8].unique())
