@@ -4,6 +4,8 @@ params.dirpath
 params.tf_file
 params.scripts_dir = projectDir
 params.offtargets
+params.dataset
+params.phospho
 
 
 // set random seed
@@ -25,7 +27,7 @@ process get_bio_contexts {
 }
 
 process random_idgen {
-    publishDir "$params.scripts_dir/results", mode: 'copy'
+    publishDir "$params.scripts_dir/results_$params.dataset", mode: 'copy'
     input:
     val iterations
     
@@ -53,18 +55,19 @@ process panacea_network_eval{
     path network
     path dirpath
     path offtargets
+    path phospho
     path tf_file
     each random_label
     each bio_context
 
     output:
-    path "PANACEA_${random_label}_${bio_context}_graphdata_df.csv", optional: true
+    path "${params.dataset}_${random_label}_${bio_context}_graphdata_df.csv", optional: true
 
     script:
     """
     #!/bin/bash
-    python3 $params.scripts_dir/PANACEA_evaluation_cluster.py -n $network -d $dirpath -r $random_label -o $offtargets -b $bio_context -t $tf_file
-    echo "PANACEA_${random_label}_${bio_context}_graphdata_df.csv"
+    python3 $params.scripts_dir/PANACEA_evaluation_cluster.py -n $network -d $dirpath -r $random_label -o $offtargets -p $phospho -b $bio_context -t $tf_file -i $params.dataset
+    echo "${params.dataset}_${random_label}_${bio_context}_graphdata_df.csv"
     """
 }
 
@@ -94,17 +97,30 @@ process concatenate_results {
 workflow {
     Channel.fromPath(params.network)
         .set{network}
+
+    // get random idents used in the network_calc.nf
+    Channel.fromPath("${params.dirpath}/*")
+        .filter{it.getName().endsWith('.sif')}
+        .map{it.toString().split('__')[1]}
+        .collect()
+        .map{it.unique()}
+        .flatten()
+        .set{random_ids}
+
     Channel.fromPath(params.dirpath)
         .set{dirpath}
     Channel.fromPath(params.tf_file)
         .set{tf_file}
     Channel.fromPath(params.offtargets)
         .set{offtargets}
-    random_idgen(params.iterations)
-        .splitText()
-        // remove the end of line character
-        .map{it.trim()}
-        .set{random_ids}
+    Channel.fromPath(params.phospho)
+        .set{phospho}
+
+    // random_idgen(params.iterations)
+    //     .splitText()
+    //     // remove the end of line character
+    //     .map{it.trim()}
+    //     .set{random_ids}
     
     get_bio_contexts(tf_file)
         .splitText()
@@ -113,9 +129,9 @@ workflow {
         // .view()
         .set{bio_contexts}
     
-    panacea_network_eval(network, dirpath, offtargets, tf_file, random_ids, bio_contexts)
+    panacea_network_eval(network, dirpath, offtargets, phospho, tf_file, random_ids, bio_contexts)
         // .view()
-        .collectFile(keepHeader: true, skip:1, name: 'panacea_graphdata_results.csv', storeDir: './')
+        .collectFile(keepHeader: true, skip:1, name: "${params.dataset}_graphdata_results.csv", storeDir: './')
         .set{panacea_results}
     // python3 /home/victo/tfm/vp-mthesis/PANACEA_evaluation_cluster.py -n network_collectri.sif -d results -r real -o panacea_offtargets.tsv -b HSTS_LAPATINIB -t tf_activity_results.tsv
 }

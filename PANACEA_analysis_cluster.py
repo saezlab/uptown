@@ -31,6 +31,7 @@ parser.add_argument('-r', '--random', help='random_label', required=True)
 parser.add_argument('-b', '--bio_context', help='combination cell_line-drug', required=True)
 parser.add_argument('-tf', '--tfs', help='number of tfs to use', required=False, default=25)
 parser.add_argument('-a', '--allpaths', help='allpaths cutoff', required=False, default=6)
+parser.add_argument('-d', '--dataset', help='dataset name', required=False, default='PANACEA')
 
 args = parser.parse_args()
 
@@ -41,6 +42,7 @@ random_label = args.random
 number_tfs = int(args.tfs)
 bio_context = args.bio_context
 cutoff = int(args.allpaths)
+dataset = args.dataset
 
 
 # Network import
@@ -87,7 +89,7 @@ elif random_label == 'real':
 cell_line, drug = bio_context.split('_')
         
 print('Solving for cell line and drug {}'.format(bio_context))    
-G_solver = Solver(G, 'PANACEA')
+G_solver = Solver(G, dataset)
 G_solver.random = random_bool
 try:
     G_solver.source_dict = source_dict[drug]
@@ -102,7 +104,7 @@ G_solver.network_batchrun(iter = bio_context,
 selected_targets_dict.update(G_solver.selected_targets_dict)
 
 targets_df = pd.DataFrame.from_dict(selected_targets_dict)
-targets_df.to_csv(f'PANACEA_{random_label}_{bio_context}_selectedtargets.csv')
+targets_df.to_csv(f'{dataset}_{random_label}_{bio_context}_selectedtargets.csv')
     
 
 

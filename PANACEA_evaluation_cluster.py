@@ -14,6 +14,8 @@ parser.add_argument('-r', '--random', help='random_label', required=True)
 parser.add_argument('-b', '--bio_context', help='combination cell_line-drug', required=True)
 parser.add_argument('-d', '--dirpath', help='directory path', required=True)
 parser.add_argument('-o', '--offtargets', help='offtargets file', required=True)
+parser.add_argument('-i', '--dataset', help='dataset name', required=False, default='PANACEA')
+parser.add_argument('-p', '--phospho', help='phospho file', required=False, default='')
 
 args = parser.parse_args()
 
@@ -23,6 +25,8 @@ random_label = args.random
 bio_context = args.bio_context
 dirpath = args.dirpath
 offtargets_file = args.offtargets
+dataset = args.dataset
+phospho_file = args.phospho
 
 
 
@@ -49,8 +53,24 @@ for index, row in offtargets_df.iterrows():
         # If it isn’t, create a new list with the target and assign it to the drug key
         offtarget_dict[drug] = [target]
 
+phospho_df = pd.read_csv(phospho_file, sep='\t')
+phospho_dict = {}
 
-G_eval = Eval(G, dirpath, 'PANACEA', bio_context, random_label)
+for index, row in phospho_df.iterrows():
+    # Get the drug and target from the row
+    drug = row['drug']
+    target = row['Gene']
+    
+    # Check if the drug is already a key in the dictionary
+    if drug in phospho_dict:
+        # If it is, append the target to the list of targets for that drug
+        phospho_dict[drug].append(target)
+    else:
+        # If it isn’t, create a new list with the target and assign it to the drug key
+        phospho_dict[drug] = [target]
+
+
+G_eval = Eval(G, dirpath, dataset, bio_context, random_label)
 # if there are no graphs in dictionary, finish execution
 if not G_eval.graphs:
     exit()
@@ -60,6 +80,7 @@ G_eval.get_number_edges()
 G_eval.get_connected_targets()
 G_eval.threshold_filter()
 G_eval.compute_centrality_metrics()
-G_eval.get_returned_offtargets(offtarget_dict)
+G_eval.get_returned_offtargets(offtarget_dict, 'offtargets')
+G_eval.get_returned_offtargets(phospho_dict, 'phospho')
 
-G_eval.graphdata_df.to_csv(f'PANACEA_{random_label}_{bio_context}_graphdata_df.csv', index=False)
+G_eval.graphdata_df.to_csv(f'{dataset}_{random_label}_{bio_context}_graphdata_df.csv', index=False)

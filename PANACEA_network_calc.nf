@@ -4,7 +4,7 @@ params.network
 params.source_file
 params.tf_file
 params.scripts_dir = projectDir
-
+params.dataset
 
 // set random seed
 java.util.Random rand = new java.util.Random(42)
@@ -48,7 +48,7 @@ process random_idgen {
 }
 
 process panacea_network_calc{
-    publishDir "$params.scripts_dir/results", mode: 'move'
+    publishDir "$params.scripts_dir/results_$params.dataset", mode: 'move'
     input:
     path network
     path source_file
@@ -63,7 +63,7 @@ process panacea_network_calc{
     script:
     """
     #!/bin/bash
-    python3 $params.scripts_dir/PANACEA_analysis_cluster.py -n $network -s $source_file -t $tf_file -r $random_label -tf 25 -a 6 -b $bio_context
+    python3 $params.scripts_dir/PANACEA_analysis_cluster.py -n $network -s $source_file -t $tf_file -r $random_label -tf 20 -a 6 -b $bio_context -d $params.dataset
     """
 }
 
