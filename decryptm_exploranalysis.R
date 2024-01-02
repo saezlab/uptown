@@ -2,53 +2,7 @@ library(tidyverse)
 
 experimental_summary <- read_tsv("experiment_summary.tsv")
 
-results_full <- read_tsv('decryptm/all_phospho_processed_full_results/tmt-report/abundance_protein_MD.tsv')
-results_tfs <- read_tsv('decryptm/all_phospho_processed_tfs_results/tmt-report/abundance_protein_MD.tsv')
 collectri_tfs <- read_tsv('collectri.tsv') %>% pull(source) %>% unique()
-
-sample_ids <- tibble(sample_id = c(paste0('sample-0', seq(1,9,1)), 'sample-10', 'sample-11'))
-
-concentrations <- experimental_summary %>% select(starts_with('Conc')) %>% distinct() %>% t() %>% as.data.frame() %>% rownames_to_column('conc_id') %>% as_tibble() %>% rename(conc = V1) %>% bind_cols(sample_ids)
-
-results_full_longf <- results_full %>% 
-    pivot_longer(cols = starts_with('sample-'), names_to = 'sample_id', values_to = 'ratio') %>% 
-    left_join(concentrations, by = 'sample_id')  %>%
-    filter(Gene %in% collectri_tfs)
-
-write_tsv(results_full_longf, 'phosphorliated_prots_clean.tsv')
-
-results_tfs_longf <- results_tfs %>% 
-    pivot_longer(cols = starts_with('sample-'), names_to = 'sample_id', values_to = 'abundance') %>% 
-    left_join(concentrations, by = 'sample_id') %>%
-    filter(Gene %in% collectri_tfs)
-
-detected_proteins_full <- results_full_longf %>% distinct(Gene) %>% pull()
-
-detected_proteins_tfs <- results_tfs_longf %>% distinct(Gene) %>% pull()
-
-# plot share of detected proteins present in collectri
-#71 proteins detected when using the full proteome
-detected_proteins_full %>% 
-    intersect(collectri_tfs) %>% 
-    length()
-
-#71 proteins detected when using the tfs
-detected_proteins_tfs %>% 
-    intersect(collectri_tfs) %>% 
-    length()
-
-# plot the activity (y axis) vs concentration (x axis) for each protein
-# plot the activity (y axis) vs concentration (x axis) for each protein
-results_tfs_longf %>% 
-    filter(Gene %in% collectri_tfs) %>% 
-    ggplot(aes(x = conc, y = abundance, color = Gene)) +
-    geom_line() +
-    scale_x_log10() +
-    cowplot::theme_cowplot() +
-    theme(legend.position = 'none') +
-    facet_wrap(~Gene, ncol = 8)
-
-
 
 # fitted data
 fitted_params <- read_csv('fit_params_peptide_rep_MD.csv')
@@ -149,11 +103,30 @@ combs_under_threshold %>%
 dev.off()
 
 
-# create a subset of 100 random combinations of gene, drug, peptide and rep which were not fitted
-unique_combinations <- fitted_curves %>% distinct(Gene, Drug, Peptide, rep) %>% arrange(Gene, Drug, Peptide, rep)
+# 33 genes w peptides with at least r2 > 0.8 and log_ec50 < 2
+formatted_targets <- fitted_params %>% filter(log_ec50<2, rsq>0.8) %>% 
+    mutate(bio_context = paste(Cell_line, Drug, sep = '_')) %>%
+    arrange(Gene, Drug, Cell_line) %>%
+    mutate(direction = sign(bottom-top)) %>%
+    distinct(Gene, Drug, Cell_line, direction, .keep_all = TRUE) %>%
+    arrange(log_ec50) %>%
+    relocate(direction, .after = log_ec50) %>%
+    group_by(Gene, Drug, Cell_line) %>%
+    dplyr::filter(log_ec50 == min(log_ec50), .bygroup=TRUE) %>%
+    ungroup() %>%
+    select(Gene, bio_context, direction) %>%
+    mutate(direction = as.numeric(direction)) %>%
+    pivot_wider(id_cols = bio_context, names_from=Gene, values_from = direction) %>%
+    column_to_rownames('bio_context')
 
-P17096_S103 Dasatinib R4
+non_phosphorylated_tfs <- collectri_tfs[!collectri_tfs %in% names(formatted_targets)] %>%
+tibble(TF = ., A431_Afatinib=NA, A431_Gefitinib = NA, A431_Dasatinib = NA) %>%
+column_to_rownames('TF') %>% t() %>% data.frame()
 
-results_tfs_longf %>% 
-            filter(Drug == 'Dasatinib', Index == 'P17096_S103', rep=='R4') %>% print(n=100) %>% View()
+formatted_targets <- merge(formatted_targets, non_phosphorylated_tfs, by='row.names') %>% column_to_rownames('Row.names')
+
+write.table(formatted_targets, 'proteomics_targets.tsv', sep='\t', quote=FALSE, row.names=TRUE, col.names=TRUE)
+
+
+
 

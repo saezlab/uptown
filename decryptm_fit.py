@@ -72,6 +72,8 @@ collectri_tfs = np.unique(pd.read_table('collectri.tsv', sep = '\t').source.valu
 # separate runid column in several columns by a separator
 df[['analysistype', 'cell_line', 'drug', 'time', 'rep']] = df['runid'].str.split('_', expand=True)
 
+
+df.columns
 # ['Spectrum', 'Spectrum File', 'Peptide',
 #        'Extended Peptide', 'Prev AA', 'Next AA', 'Peptide Length', 'Charge',
 #        'Retention', 'Observed Mass', 'Calibrated Observed Mass',
@@ -85,6 +87,9 @@ df[['analysistype', 'cell_line', 'drug', 'time', 'rep']] = df['runid'].str.split
 #        'Protein', 'Entry Name', 'Protein Description',
 #        'Mapped Genes', 'Mapped Proteins', 'Quan Usage',
 #        'Modified Peptide', 'Protein ID', 'Gene', 'runid', 'analysistype', 'cell_line', 'drug', 'time', 'rep']
+
+df.drop(columns=['ProteinID', 'Peptide', 'SequenceWindow', 'MaxPepProb',
+       'ReferenceIntensity'], inplace=True)
 
 df_columns = [
     #    'Modified Peptide',
@@ -103,6 +108,11 @@ longf_df = pd.melt(df, id_vars=df_columns,
 longf_df['conc'] = longf_df['sample'].map(concentrations_dict)
 
 longf_df.to_csv('detected_peptides_long_MD.csv', index=False)
+
+phospho_prots = longf_df[['drug', 'Gene']].drop_duplicates()
+
+phospho_prots.to_csv('phospho_prots.tsv', sep='\t', index=False)
+
 
 longdf_martin = pd.read_csv('detected_peptides_long.csv')
 
@@ -253,3 +263,6 @@ fit_params.to_csv('fit_params_peptide_rep_MD.csv', index=False)
 
 # 131 genes with peptides with at least r2 > 0.8
 len(fit_params[fit_params['rsq'] > 0.8].unique())
+
+
+
