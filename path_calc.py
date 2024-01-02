@@ -9,6 +9,7 @@ import ptitprince as pt
 import string
 import random
 from pathos.multiprocessing import ProcessingPool as Pool
+import math
 
 
 class Solver:
@@ -367,7 +368,7 @@ class Solver:
 
         # subset the dict to only include nodes in the subG
         tf_subset = tf_dict[iter]
-        target_dict = {k: v for k, v in tf_subset.items() if k in nodes}
+        target_dict = {k: v for k, v in tf_subset.items() if k in nodes and not math.isnan(v)}
         # get the first n elements of the dict
         target_dict_top = dict(itertools.islice(target_dict.items(), number_tfs))
         if len(target_dict_top) < number_tfs:
