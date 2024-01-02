@@ -10,6 +10,7 @@ from path_calc import Solver
 # import umap
 import matplotlib.pyplot as plt
 
+
 class Eval:
     def __init__(self, G, dirpath, study_id, biocontext, random_label):
         self.dirpath = dirpath
@@ -303,7 +304,7 @@ class Eval:
         
         self.graphdata_df = filtered_df
     
-    def get_returned_offtargets(self, offtarget_dict):
+    def get_returned_offtargets(self, offtarget_dict, type_item='offtarget'):
         offtarget_results = []
 
         # Iterating over each key in the network dictionary
@@ -324,10 +325,10 @@ class Eval:
                     perc_offtargets_nodes = (target_count / number_nodes) * 100
                     perc_offtargets_edges = (target_count / number_edges) * 100
                     # Appending the results to the list
-                    offtarget_results.append({'Graph ID': key, 'offtarget_count': target_count, 'all_offtargets': all_offtargets, 'perc_offtarget': perc_offtargets, 'perc_offtarget_nodes': perc_offtargets_nodes, 'perc_offtarget_edges': perc_offtargets_edges})
+                    offtarget_results.append({'Graph ID': key, f'{type_item}_count': target_count, f'all_{type_item}': all_offtargets, f'perc_{type_item}': perc_offtargets, f'perc_{type_item}_nodes': perc_offtargets_nodes, f'perc_{type_item}_edges': perc_offtargets_edges})
             # if the drug is not present in the offtarget_dict, append NA to the offtarget_results
             if not any(drug.lower() in key.lower() for drug in offtarget_dict.keys()):
-                offtarget_results.append({'Graph ID': key, 'offtarget_count': np.nan, 'all_offtargets': np.nan, 'perc_offtarget': np.nan, 'perc_offtarget_nodes': np.nan, 'perc_offtarget_edges': np.nan})
+                offtarget_results.append({'Graph ID': key, f'{type_item}_count': np.nan, f'all_{type_item}': np.nan, f'perc_{type_item}': np.nan, f'perc_{type_item}_nodes': np.nan, f'perc_{type_item}_edges': np.nan})
         # Creating a DataFrame from the results list
         offtarget_result_df = pd.DataFrame(offtarget_results)
         self.graphdata_df = pd.merge(self.graphdata_df, offtarget_result_df, on="Graph ID")
@@ -344,9 +345,6 @@ class Eval:
             degree_centrality.append({'Graph ID': graph, 
                                       'Degree centrality': degree_results, 
                                       'Mean degree centrality': np.mean(list(degree_results.values()))})
-
-
-
 
         degree_centrality_df = pd.DataFrame(degree_centrality)
         self.graphdata_df = pd.merge(self.graphdata_df, degree_centrality_df, on="Graph ID")
@@ -441,3 +439,15 @@ class Eval:
         ax.set_xticklabels(ax.get_xticklabels(), rotation=45,  ha='right')
 
         plt.show()
+
+
+    def plot_raincloud_plots(self, feature, height = 4, aspect = 16/9, col_wrap=3):
+        # define 3x2 facetgrid, not 6x1
+
+        g = sns.FacetGrid(self.graphdata_df, col = "Methods", height = height, aspect = aspect, col_wrap=col_wrap)
+        g = g.map_dataframe(pt.RainCloud, x = "Random", y = feature, data = self.graphdata_df,
+                        orient = "h")
+        # add plot title
+        g.fig.subplots_adjust(top=0.9)
+        g.fig.suptitle(feature)
+        return g
