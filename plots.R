@@ -42,14 +42,15 @@ panacea_dotplot <- panacea_data %>% group_by(Biocontext, Methods, Random) %>%
     geom_point() +
     #scale color threshold: <0 is blue, +0 is red
     scale_color_gradient2(low = 'blue', mid = 'grey', high = 'red', midpoint = 0, limits = c(-50, 50)) +
-    scale_size_continuous(range = c(1, 7), trans='reverse') +
+    scale_size_continuous(range = c(0, 5), trans='reverse') +
     labs(color = 'Mean % diff\nreal - random', size = 'Null sd') +
     theme_cowplot() +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1, size=13), 
+    theme(axis.text.x = element_text(angle = 45, hjust = 1, size=10), 
+    axis.text.y = element_text(size=10),
+    axis.title = element_text(size=10),
     legend.position = 'right',
-    legend.box = "horizontal",
-    legend.text=element_text(size=11),
-    legend.title=element_text(size=11))
+    text = element_text(size=10),
+    legend.box = "horizontal")
 
 legend <- get_legend(panacea_dotplot) %>% ggpubr::as_ggplot()
 
@@ -67,8 +68,11 @@ top_annotation <- panacea_data %>% group_by(Biocontext, Methods, Random) %>%
     scale_fill_gradient2(low = 'blue', mid = 'grey', high = 'red', midpoint = 0, limits = c(-50, 50)) +
     geom_hline(yintercept = 0, linetype = 'dashed', linewidth = 0.75) +
     theme_cowplot() +
-    theme(axis.text.x = element_blank(),
+    theme(text=element_text(size=10),
+          axis.text.y = element_text(size=10),
+          axis.text.x = element_blank(),
           axis.title.x = element_blank(),
+          axis.title.y = element_text(size=10),
           legend.position = 'none')
 
 right_annotation <- panacea_data %>% group_by(Biocontext, Methods, Random) %>%
@@ -83,9 +87,11 @@ right_annotation <- panacea_data %>% group_by(Biocontext, Methods, Random) %>%
     scale_fill_gradient2(low = 'blue', mid = 'grey', high = 'red', midpoint = 0, limits = c(-50, 50)) +
     geom_vline(xintercept = 0, linetype = 'dashed', linewidth = 0.75) +
     theme_cowplot() +
-    theme(
+    theme(text=element_text(size=10),
       axis.text.y = element_blank(),
           axis.title.y = element_blank(),
+          axis.title.x = element_text(size=10),
+          axis.text.x = element_text(size=10),
           legend.position = 'none'
           )
 
@@ -97,11 +103,11 @@ arranged_plots <- ggarrange(
   top_annotation, legend,
   panacea_dotplot, right_annotation,
   ncol = 2, nrow = 2,
-  widths = c(4, 1), # Adjust as necessary
+  widths = c(2.5, 1), # Adjust as necessary
   heights = c(1, 4)) # Adjust as necessary
 
 
-ggsave('plots/panacea_dotplot.png', plot = arranged_plots, device = 'png', width = 13, height = 18, units = 'in', dpi = 200)
+ggsave('plots/panacea_dotplot.png', plot = arranged_plots, device = 'png', width = 19, height = 29, units = 'cm', dpi = 200)
 
 # numberss
 
@@ -142,8 +148,8 @@ disagreement_plot <- ggplot(disagreement_df, aes(x = count, y = mean_diff, size 
 
 plot_bigdispersion <- panacea_data %>% group_by(Biocontext, Methods, Random) %>%
     filter(Biocontext == 'H1793_OSIMERTINIB') %>%
-    ggplot(aes(x = Methods, y = `perc_offtarget`, pattern = Random)) +
-    geom_boxplot_pattern(color = "black", pattern_fill = "white", pattern_angle = 45, pattern_density = 0.1, pattern_spacing = 0.025, pattern_key_scale_factor = 0.6) +
+    ggplot(aes(x = Methods, y = `perc_offtarget`, fill = Random)) +
+    geom_boxplot(width = 0.2) +
     theme_cowplot() +
     ylim(0, 50) +
     theme(axis.text.x = element_blank(),
@@ -152,9 +158,8 @@ plot_bigdispersion <- panacea_data %>% group_by(Biocontext, Methods, Random) %>%
 
 plot_small_dispersion <- panacea_data %>% group_by(Biocontext, Methods, Random) %>%
     filter(Biocontext == 'LNCAP_FORETINIB') %>%
-    ggplot(aes(x = Methods, y = `perc_offtarget`, pattern = Random)) +
-    geom_boxplot_pattern(color = "black", pattern_fill = "white", pattern_angle = 45, pattern_density = 0.1, pattern_spacing = 0.025, pattern_key_scale_factor = 0.6) +
-    
+    ggplot(aes(x = Methods, y = `perc_offtarget`, fill = Random)) +
+    geom_boxplot(width = 0.2) +
     theme_cowplot() +
     ylim(0, 50) +
     theme(axis.text.x = element_text(angle = 90, hjust = 1))
@@ -165,7 +170,7 @@ disagreement_plots <- ggarrange(disagreement_plot, right_plots, ncol = 2, nrow =
 
 
 
-ggsave('panacea_disagreement.svg', plot = disagreement_plots, device = 'svg', width = 11, height = 8, units = 'in', dpi = 200)
+ggsave('plots/panacea_disagreement.svg', plot = disagreement_plots, device = 'svg', width = 13, height = 10, units = 'in', dpi = 200)
 
 disagreement_df %>% group_by(factor(count)) %>%
     summarise(mean = mean(mean_diff, na.rm=TRUE), sd = sd(mean_diff, na.rm = TRUE), 
@@ -345,13 +350,13 @@ ec50_values_long %>%
 
 # revisit
 ec50_values_long %>%
-group_by(Biocontext, Methods, Location) %>%
-summarise(count = n()) %>%
-ggplot(aes(x = Methods, y = count, fill = Location)) +
-geom_bar(stat = "identity", position = "dodge") +
-facet_wrap(~Biocontext) +
-theme_cowplot() +
-theme(axis.text.x = element_text(angle = 90, hjust = 1))
+  group_by(Biocontext, Methods, Location) %>%
+  summarise(count = n()) %>%
+  ggplot(aes(x = Methods, y = count, fill = Location)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  facet_wrap(~Biocontext) +
+  theme_cowplot() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
 
 library(ggforce)
 library(ggplot2)
@@ -360,7 +365,7 @@ ec50_nodes <- ggplot(ec50_values_long) +
   geom_boxplot_pattern(aes(x = Methods, y = EC50_Value, pattern = Location), color = "black", pattern_fill = "white", pattern_angle = 45, pattern_density = 0.1, pattern_spacing = 0.025, pattern_key_scale_factor = 0.6) +
   labs(x = "Location",
        y = "log EC50 Value") +
-  theme_cowplot() +
+theme_cowplot() +
   theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
     facet_wrap(~Biocontext)
 
