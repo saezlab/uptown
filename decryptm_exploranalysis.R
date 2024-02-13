@@ -4,10 +4,32 @@ experimental_summary <- read_tsv("experiment_summary.tsv")
 
 collectri_tfs <- read_tsv('collectri.tsv') %>% pull(source) %>% unique()
 
-# fitted data
-fitted_params <- read_csv('fit_params_peptide_rep_MD.csv')
-# 1192 psites, 892 with fit, 142 r2>0.8 (54 prots)
+# read network and get list of nodes
+network <- read_tsv('network_collectri.sif')
+nodes <- network %>% 
+    select('# source', target)
 
+# append sources and targets in a list
+nodes_list <- list(nodes$`# source`, nodes$target) %>% unlist() %>% unique()
+
+fitted_params <- read_csv('fit_params_peptide_all_bound.csv')
+# fitted data
+ec50_info <- fitted_params %>% 
+    filter(rsq>=0.8) %>%
+    group_by(Gene, Drug, Cell_line) %>%
+    summarise(log_ec50 = min(log_ec50)) %>%
+    filter(Gene %in% nodes_list) %>%
+    filter(!Gene %in% collectri_tfs) #summarised at protein level, best phosphorylation site per protein
+# summarise log_ec50 values per gene, drug and cell line
+
+write_tsv(ec50_info, 'ec50_info.tsv')
+
+# number of collectri tfs with rsq > 0.8
+fitted_params %>% 
+    # filter(rsq>=0.8) %>%
+    filter(Gene %in% nodes_list) %>%
+    filter(Gene %in% collectri_tfs) %>%
+    group_by(Gene, Drug, Cell_line)
 
 results_tfs_longf <- read_csv('detected_peptides_long_MD.csv') %>% dplyr::rename('rep' = rep, 'Drug' = drug, 'Cell_line' = cell_line) %>% filter(Gene %in% collectri_tfs)
 concentrations <- results_tfs_longf %>% distinct(conc) %>% arrange(conc) %>% pull(conc)
@@ -20,6 +42,7 @@ logistic_function <- function(x, ec50, slope, top, bottom){
 # create curves from the logistic function and the fitted parameters
 fitted_curves <- fitted_params %>% 
     filter(rsq>0.8) %>%
+    filter(Gene %in% collectri_tfs) %>%
     group_by(Index, Gene, Drug, Cell_line, rep) %>%
     group_split() %>%
     purrr::map(., function(x){
@@ -33,6 +56,7 @@ fitted_curves <- fitted_params %>%
         return(data)
     }) %>% bind_rows() %>% filter(!is.na(y_fit))
 
+
 # open a pdf devvice, then plot the curves (four curves corresponding to the four replicates per plot). Also plot the real measurements as points. Add r2 tag to each plot
 
 fitted_params <- fitted_params %>% ungroup()
@@ -41,10 +65,10 @@ fitted_curves <- fitted_curves %>% ungroup()
 
 
 
-unique_combinations <- fitted_params %>% distinct(Index, Gene, Drug, rep, rsq) %>% arrange(desc(rsq))
+unique_combinations <- fitted_params %>% distinct(Index, Gene, Drug, rep, rsq) %>% arrange(desc(rsq)) %>% filter(Gene %in% collectri_tfs)
 
 combs_over_threshold <- unique_combinations %>% filter(rsq >= 0.8)
-combs_under_threshold <- unique_combinations %>% filter(rsq < 0.8) %>% slice_sample(n=40)
+combs_under_threshold <- unique_combinations %>% filter(rsq < 0.8) %>% slice_sample(n=100)
 
 # iterate over all combinations of gene, drug, peptide and rep
 pdf('fitted_curves.pdf', width = 10, height = 7)
@@ -103,30 +127,61 @@ combs_under_threshold %>%
 dev.off()
 
 
-# 33 genes w peptides with at least r2 > 0.8 and log_ec50 < 2
-formatted_targets <- fitted_params %>% filter(log_ec50<2, rsq>0.8) %>% 
+phosphorylated_prots <- fitted_params %>% pull(Gene) %>% unique()
+
+formatted_targets <- fitted_params %>% 
+    filter(rsq>0.8) %>% 
+    filter(Gene %in% collectri_tfs) %>%
+    filter(Gene %in% nodes_list) %>%
     mutate(bio_context = paste(Cell_line, Drug, sep = '_')) %>%
-    arrange(Gene, Drug, Cell_line) %>%
+    group_by(Index, Gene, Drug, Cell_line, bio_context) %>%
+    summarise(log_ec50 = mean(log_ec50), top = min(top), bottom=min(bottom)) %>%
     mutate(direction = sign(bottom-top)) %>%
-    distinct(Gene, Drug, Cell_line, direction, .keep_all = TRUE) %>%
-    arrange(log_ec50) %>%
+    distinct(Index, Gene, Drug, Cell_line, direction, .keep_all = TRUE) %>%
     relocate(direction, .after = log_ec50) %>%
-    group_by(Gene, Drug, Cell_line) %>%
-    dplyr::filter(log_ec50 == min(log_ec50), .bygroup=TRUE) %>%
+    group_by(Gene, Drug, Cell_line, bio_context) %>%
+    summarise(log_ec50 = min(log_ec50), direction = min(direction)) %>%
+    filter(direction != 0) %>%
     ungroup() %>%
+    group_by(Drug, Cell_line, bio_context) %>%
+    arrange(log_ec50, .by_group=TRUE) %>%
+    group_by(bio_context) %>%
     select(Gene, bio_context, direction) %>%
     mutate(direction = as.numeric(direction)) %>%
     pivot_wider(id_cols = bio_context, names_from=Gene, values_from = direction) %>%
     column_to_rownames('bio_context')
 
-non_phosphorylated_tfs <- collectri_tfs[!collectri_tfs %in% names(formatted_targets)] %>%
+# plot distribution of log_ec50, facet per biocontext
+fitted_params %>% 
+    filter(rsq>0.8) %>% 
+    filter(Gene %in% collectri_tfs) %>%
+    mutate(bio_context = paste(Cell_line, Drug, sep = '_')) %>%
+    group_by(Index, Gene, Drug, Cell_line, bio_context) %>%
+    summarise(log_ec50 = mean(log_ec50), top = min(top), bottom=min(bottom)) %>%
+    mutate(direction = sign(bottom-top)) %>%
+    distinct(Index, Gene, Drug, Cell_line, direction, .keep_all = TRUE) %>%
+    relocate(direction, .after = log_ec50) %>%
+    group_by(Gene, Drug, Cell_line, bio_context) %>%
+    summarise(log_ec50 = min(log_ec50), direction = min(direction)) %>%
+    filter(direction != 0) %>%
+    ungroup() %>%
+    group_by(Drug, Cell_line, bio_context) %>%
+    arrange(log_ec50, .by_group=TRUE) %>%
+    group_by(bio_context) %>%
+    slice_min(n=25, order_by=log_ec50)   %>%
+    ggplot(aes(x=log_ec50)) +
+    geom_histogram(bins=30) +
+    facet_wrap(~bio_context, ncol=3) +
+    cowplot::theme_cowplot() +
+    theme(legend.position = 'none')
+
+non_changing_tfs <- phosphorylated_prots[phosphorylated_prots %in% collectri_tfs & !phosphorylated_prots %in% names(formatted_targets)] %>%
 tibble(TF = ., A431_Afatinib=NA, A431_Gefitinib = NA, A431_Dasatinib = NA) %>%
 column_to_rownames('TF') %>% t() %>% data.frame()
 
-formatted_targets <- merge(formatted_targets, non_phosphorylated_tfs, by='row.names') %>% column_to_rownames('Row.names')
+formatted_targets <- merge(formatted_targets, non_changing_tfs, by='row.names') %>% column_to_rownames('Row.names')
 
 write.table(formatted_targets, 'proteomics_targets.tsv', sep='\t', quote=FALSE, row.names=TRUE, col.names=TRUE)
-
 
 
 

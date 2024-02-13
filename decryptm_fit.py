@@ -91,12 +91,6 @@ df.columns
 df.drop(columns=['ProteinID', 'Peptide', 'SequenceWindow', 'MaxPepProb',
        'ReferenceIntensity'], inplace=True)
 
-df_columns = [
-    #    'Modified Peptide',
-    #    'Retention', # same proteins can elute at different times, that's why we keep this column, to prevent duplicates
-    #    'Assigned Modifications',
-       'Index', 'Gene', 'runid',
-       'analysistype', 'cell_line', 'drug', 'time', 'rep']
 
 df_columns = ['Index', 'Gene', 'runid', 'analysistype', 'cell_line', 'drug',
        'time', 'rep']
@@ -109,12 +103,8 @@ longf_df['conc'] = longf_df['sample'].map(concentrations_dict)
 
 longf_df.to_csv('detected_peptides_long_MD.csv', index=False)
 
-phospho_prots = longf_df[['drug', 'Gene']].drop_duplicates()
+longf_df = pd.read_csv('detected_peptides_long_MD.csv')
 
-phospho_prots.to_csv('phospho_prots.tsv', sep='\t', index=False)
-
-
-longdf_martin = pd.read_csv('detected_peptides_long.csv')
 
 # per Modified Peptide, Gene, drug, cell_line and rep, get the number of rows in the longdf_martin
 longdf_size = longf_df.groupby(df_columns).size().reset_index(name='counts')
@@ -123,12 +113,13 @@ longdf_size[longdf_size['counts'] != 10]
 
 # count nmber of rows per peptide, gene, drug, cell_line and rep in the df object
 
-longf_df = longf_df[longf_df['Gene'].isin(collectri_tfs)]
+# filter out genes not present in collectri_tfs
+# longf_df = longf_df[~longf_df['Gene'].isin(collectri_tfs)]
 
-# plot ratios distribution
-plt.figure()
-plt.hist(longf_df['ratio'], bins=100)
-plt.show()
+# # plot ratios distribution
+# plt.figure()
+# plt.hist(longf_df['ratio'], bins=100)
+# plt.show()
 
 # from https://github.com/kusterlab/decryptM
 
@@ -207,7 +198,7 @@ def fit_logistic_function(y_data, x_data, x_interpolated=None, curve_guess=None,
             perr = np.sqrt(np.diag(pcov))
 
         else:
-            popt, pcov = optimize.curve_fit(logistic_model, x_data, y_data, p0=curve_guess, maxfev=5000)
+            popt, pcov = optimize.curve_fit(logistic_model, x_data, y_data, p0=curve_guess, bounds=curve_bounds, max_nfev=max_opt)
             perr = np.sqrt(np.diag(pcov))
 
         # Calculate R2 and RMSE
@@ -223,8 +214,6 @@ def fit_logistic_function(y_data, x_data, x_interpolated=None, curve_guess=None,
 
 # using the concentrations dict, create a new column with the concentration for each sample
 
-
-longf_df
 # per gene, drug and cell_line, fit logistic curve
 # create empty df
 fit_params = pd.DataFrame(columns=['Index', 'Gene', 'Drug', 'Cell_line', 'rep', 'log_ec50', 'slope', 'top', 'bottom', 'rsq', 'rmse', 'log_ec50_error', 'slope_error', 'top_error', 'bottom_error'])
@@ -235,34 +224,45 @@ unique_combinations = longf_df[['Index', 'Gene', 'drug', 'cell_line', 'rep']].dr
 
 
 for comb in unique_combinations.values:
+
+    curve_bounds = ([-5, -np.inf, -10, -10], [5, np.inf, 10, 10])
+
     psite, gene, drug, cell_line, rep = comb
     x_data = np.log10(longf_df[(longf_df['Index'] == psite) & (longf_df['Gene'] == gene) & (longf_df['drug'] == drug) & (longf_df['cell_line'] == cell_line) & (longf_df['rep'] == rep)]['conc'].values)
     y_data = longf_df[(longf_df['Index'] == psite) & (longf_df['Gene'] == gene) & (longf_df['drug'] == drug) & (longf_df['cell_line'] == cell_line) & (longf_df['rep'] == rep)]['ratio']
-    log_ec50, slope, top, bottom, r2, rmse, log_ec50_error, slope_error, top_error, bottom_error = fit_logistic_function(x_data=x_data, y_data=y_data, curve_guess=[np.median(x_data), 1, 0, 0])
+    log_ec50, slope, top, bottom, r2, rmse, log_ec50_error, slope_error, top_error, bottom_error = fit_logistic_function(x_data=x_data, y_data=y_data, curve_guess=[np.median(x_data), 1, 0, 0], curve_bounds=curve_bounds)
 
 
-    # fit_params = fit_params.append({'Index': psite, 'Gene': gene, 'Drug': drug, 'Cell_line': cell_line, 'rep': rep, 'log_ec50': log_ec50, 'slope': slope, 'top': top, 
-    #                                 'bottom': bottom, 'rsq': r2, 'rmse': rmse, 'log_ec50_error': log_ec50_error, 'slope_error': slope_error, 
-    #                                 'top_error': top_error, 'bottom_error': bottom_error}, ignore_index=True)
+    fit_params = fit_params.append({'Index': psite, 'Gene': gene, 'Drug': drug, 'Cell_line': cell_line, 'rep': rep, 'log_ec50': log_ec50, 'slope': slope, 'top': top, 
+                                    'bottom': bottom, 'rsq': r2, 'rmse': rmse, 'log_ec50_error': log_ec50_error, 'slope_error': slope_error, 
+                                    'top_error': top_error, 'bottom_error': bottom_error}, ignore_index=True)
     
     # # plot the fit
-    if r2 > 0.8:
-        plt.figure()
-        plt.scatter(x_data, y_data)
-        plt.plot(x_data, logistic_model(x_data, log_ec50, slope, top, bottom))
-        plt.title(f"{psite} {drug} {cell_line}")
-        # x axis as log
-        # plt.savefig(f"{gene}_{drug}_{cell_line}.png")
-        plt.show()
+    # if r2 > 0.8:
+    #     plt.figure()
+    #     plt.scatter(x_data, y_data)
+    #     plt.plot(x_data, logistic_model(x_data, log_ec50, slope, top, bottom))
+    #     plt.title(f"{psite} {drug} {cell_line}")
+    #     # x axis as log
+    #     # plt.savefig(f"{gene}_{drug}_{cell_line}.png")
+    #     plt.show()
 
 
 
 # save fitted curves and parameters
-fit_params.to_csv('fit_params_peptide_rep_MD.csv', index=False)
+fit_params.to_csv('fit_params_peptide_all_bound.csv', index=False)
 
 
 # 131 genes with peptides with at least r2 > 0.8
-len(fit_params[fit_params['rsq'] > 0.8].unique())
+phosphorylated_interm = fit_params[(fit_params['rsq'] > 0.8) & (fit_params['log_ec50'] < 2)]
+
+
+phospho_prots = phosphorylated_interm[['Drug', 'Gene']].drop_duplicates()
+
+phospho_prots.to_csv('phospho_prots.tsv', sep='\t', index=False)
 
 
 
+## plots
+
+fit_params = pd.read_csv('fit_params_peptide_rep_MD.csv')

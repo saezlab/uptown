@@ -322,6 +322,7 @@ class Solver:
         visualizer = GraphVisualizer(self)
 
         visualizer.visualize_graph(paths, title=title, is_sign_consistent=is_sign_consistent)
+        visualizer.visualize_graph_simple(paths, title=title, is_sign_consistent=is_sign_consistent)
 
 
 
@@ -337,8 +338,10 @@ class Solver:
             reachable_nodes.update(nx.descendants(G, source))
         
         subG = G.subgraph(reachable_nodes)
-
-        self.label = f'{self.label}__reachability'
+        try:
+            self.label = f'{self.label}__reachability'
+        except AttributeError:
+            pass
 
         return subG
 
@@ -372,13 +375,13 @@ class Solver:
         # get the first n elements of the dict
         target_dict_top = dict(itertools.islice(target_dict.items(), number_tfs))
         if len(target_dict_top) < number_tfs:
-            print(f"There are not enough reachable targets, skipping.")
+            print(f"There are {len(target_dict_top)} targets, which is below threshold of {number_tfs}, skipping.")
             return
         
         # null control
         if self.random:
             try:
-                random_keys = random.sample(target_dict.keys(), number_tfs)
+                random_keys = random.sample(tf_subset.keys(), number_tfs)
                 target_dict_top = dict(zip(random_keys, target_dict_top.values()))
             except ValueError as e:
                 print(f"There are not enough reachable targets, skipping. {e}")
@@ -406,7 +409,7 @@ class Solver:
             self.compute_overlap(self.threshold)
             shortest_paths = self.shortest_paths()
             self.to_SIFfile(shortest_paths, title=f'{self.label}.sif')
-            self.visualize_graph(shortest_paths, title=self.label, is_sign_consistent=True)
+            self.visualize_graph(shortest_paths, title=self.label, is_sign_consistent=False)
             shortest_sc_paths = self.sign_consistency_check(shortest_paths)
             self.to_SIFfile(shortest_sc_paths, title=f'{self.label}.sif')
             self.visualize_graph(shortest_sc_paths, title=self.label, is_sign_consistent=True)
@@ -420,7 +423,7 @@ class Solver:
             self.subG = self.reachability_filter(self.subG)
             all_paths = self.all_paths(cutoff=cutoff)
             self.to_SIFfile(all_paths, title=f'{self.label}.sif')
-            self.visualize_graph(all_paths, title=self.label, is_sign_consistent=True)
+            self.visualize_graph(all_paths, title=self.label, is_sign_consistent=False)
             all_sc_paths = self.sign_consistency_check(all_paths)
             self.to_SIFfile(all_sc_paths, title=f'{self.label}.sif')
             self.visualize_graph(all_sc_paths, title=self.label, is_sign_consistent=True)
@@ -536,6 +539,96 @@ class GraphVisualizer:
         A.layout(prog='dot')
         file_path = f'{title}.pdf'
         A.draw(file_path, prog='dot')
+
+    def visualize_graph_simple(self, paths, title="Graph", is_sign_consistent=True):
+        """
+        Visualize the graph using the provided paths.
+
+        Args:
+            paths (list): Paths to be visualized.
+            title (str, optional): Filename for the visualization. Defaults to "Graph".
+            is_sign_consistent (bool, optional): If True, only visualize sign consistent paths. Defaults to True.
+        """
+
+        V = nx.DiGraph()
+
+        for path in paths:
+            for node in path:
+                V.add_node(node)
+                if len(path) > 1:
+                    for i in range(len(path) - 1):
+                        edge_data = self.subG.get_edge_data(path[i], path[i + 1])
+                        V.add_edge(path[i], path[i + 1], **edge_data)
+
+        sources = [s for s in self.sources if s in V.nodes()]
+        targets = [path[-1] for path in paths]
+
+        A = nx.nx_agraph.to_agraph(V)
+        A.graph_attr['ratio'] = '1.2'
+
+        # Add an intermediary invisible node and edges for layout control
+        with A.add_subgraph(name='cluster_sources', rank='min') as c:
+            c.graph_attr['color'] = 'none'
+            for s in sources:
+                c.add_node(s)
+
+        with A.add_subgraph(name='cluster_targets', rank='max') as c:
+            c.graph_attr['color'] = 'none'
+            for t in targets:
+                c.add_node(t)
+
+        for node in A.nodes():
+            n = node.get_name()
+            if n in sources:
+                fillcolor = 'steelblue'
+                if self.source_dict.get(n, 1) > 0 and is_sign_consistent:
+                    color = 'forestgreen'
+                elif self.source_dict.get(n, 1) < 0 and is_sign_consistent:
+                    color = 'tomato3'
+                else:
+                    color = 'steelblue'
+                node.attr['shape'] = 'circle'
+                node.attr['color'] = color
+                node.attr['style'] = 'filled'
+                node.attr['fillcolor'] = fillcolor
+                node.attr['label'] = ''
+                node.attr['penwidth'] = 3
+            elif n in targets:
+                fillcolor = 'mediumpurple1'
+                if self.target_dict.get(n, 1) > 0 and is_sign_consistent:
+                    color = 'forestgreen'
+                elif self.target_dict.get(n, 1) < 0 and is_sign_consistent:
+                    color = 'tomato3'
+                else:
+                    color = 'mediumpurple1'
+                node.attr['shape'] = 'circle'
+                node.attr['color'] = color
+                node.attr['style'] = 'filled'
+                node.attr['fillcolor'] = fillcolor
+                node.attr['label'] = ''
+                node.attr['penwidth'] = 3
+            else:
+                node.attr['shape'] = 'circle'
+                node.attr['color'] = 'gray'
+                node.attr['style'] = 'filled'
+                node.attr['fillcolor'] = 'gray'
+                node.attr['label'] = ''
+        
+        for edge in A.edges():
+            u, v = edge
+            edge_data = V.get_edge_data(u, v)
+            if edge_data['sign'] == 1 and is_sign_consistent:
+                edge_color = 'forestgreen'
+            elif edge_data['sign'] == -1 and is_sign_consistent:
+                edge_color = 'tomato3'
+            else:
+                edge_color = 'gray30'
+            edge.attr['color'] = edge_color
+            edge.attr['penwidth'] = 2
+        
+        A.layout(prog='dot')
+        file_path = f'{title}__simple.png'
+        A.draw(file_path, prog='dot', args='-Gsize=3, -Gdpi=200', format = 'png')
 
 
 

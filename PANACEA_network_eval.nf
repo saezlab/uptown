@@ -6,6 +6,7 @@ params.scripts_dir = projectDir
 params.offtargets
 params.dataset
 params.phospho
+params.ec50_file
 
 
 // set random seed
@@ -59,6 +60,7 @@ process panacea_network_eval{
     path tf_file
     each random_label
     each bio_context
+    path ec50_file
 
     output:
     path "${params.dataset}_${random_label}_${bio_context}_graphdata_df.csv", optional: true
@@ -66,7 +68,7 @@ process panacea_network_eval{
     script:
     """
     #!/bin/bash
-    python3 $params.scripts_dir/PANACEA_evaluation_cluster.py -n $network -d $dirpath -r $random_label -o $offtargets -p $phospho -b $bio_context -t $tf_file -i $params.dataset
+    python3 $params.scripts_dir/PANACEA_evaluation_cluster.py -n $network -d $dirpath -r $random_label -o $offtargets -p $phospho -b $bio_context -t $tf_file -i $params.dataset -e $ec50_file
     echo "${params.dataset}_${random_label}_${bio_context}_graphdata_df.csv"
     """
 }
@@ -115,6 +117,8 @@ workflow {
         .set{offtargets}
     Channel.fromPath(params.phospho)
         .set{phospho}
+    Channel.fromPath(params.ec50_file)
+        .set{ec50_file}
 
     // random_idgen(params.iterations)
     //     .splitText()
@@ -129,7 +133,7 @@ workflow {
         // .view()
         .set{bio_contexts}
     
-    panacea_network_eval(network, dirpath, offtargets, phospho, tf_file, random_ids, bio_contexts)
+    panacea_network_eval(network, dirpath, offtargets, phospho, tf_file, random_ids, bio_contexts, ec50_file)
         // .view()
         .collectFile(keepHeader: true, skip:1, name: "${params.dataset}_graphdata_results.csv", storeDir: './')
         .set{panacea_results}

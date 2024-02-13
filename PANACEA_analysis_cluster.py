@@ -57,7 +57,6 @@ source_df = pd.read_csv(sources_file, sep='\t')
 
 nodes_network = [f for f in G.nodes]
 filtered_source_df = source_df[source_df.target.isin(nodes_network)]
-filtered_source_df
 
 # create a dictionary per treatment, with the targets as keys and the sign as value
 source_dict = {}

@@ -11,7 +11,7 @@ from path_calc import Solver
 import matplotlib.pyplot as plt
 
 
-class Eval:
+class Eval(Solver):
     def __init__(self, G, dirpath, study_id, biocontext, random_label):
         self.dirpath = dirpath
         self.G = G
@@ -22,7 +22,6 @@ class Eval:
         self.graphs, self.graphdata_df = self.parse_sif_files()
         self.target_dict = self.get_target_dict()
         self.distance_df = None
-        __super__ = Solver
     
     def get_target_dict(self):
         self.target_dict = {}
@@ -30,14 +29,11 @@ class Eval:
             filename = f'./{self.dirpath}/{self.study_id}_{self.random_label}_{self.biocontext}_selectedtargets.csv'
             # convert df to dictionary and append to target dict
             df = pd.read_csv(filename, index_col=0)
-            
             target_dict = df.to_dict()
             self.target_dict.update(target_dict)
             return self.target_dict
         except FileNotFoundError:
             return
-
-
 
     def get_datafiles(self):
         files_list = os.listdir(self.dirpath)
@@ -343,12 +339,11 @@ class Eval:
         for graph in self.graphs:
             degree_results = nx.degree_centrality(self.graphs[graph])
             degree_centrality.append({'Graph ID': graph, 
-                                      'Degree centrality': degree_results, 
+                                    #   'Degree centrality': degree_results, 
                                       'Mean degree centrality': np.mean(list(degree_results.values()))})
 
         degree_centrality_df = pd.DataFrame(degree_centrality)
         self.graphdata_df = pd.merge(self.graphdata_df, degree_centrality_df, on="Graph ID")
-
 
     def closeness_centrality(self):
         closeness_centrality = []
@@ -356,7 +351,7 @@ class Eval:
         for graph in self.graphs:
             closeness_results = nx.closeness_centrality(self.graphs[graph])
             closeness_centrality.append({'Graph ID': graph, 
-                                         'Closeness centrality': closeness_results, 
+                                        #  'Closeness centrality': closeness_results, 
                                          'Mean closeness centrality': np.mean(list(closeness_results.values()))})
         closeness_centrality_df = pd.DataFrame(closeness_centrality)
         self.graphdata_df = pd.merge(self.graphdata_df, closeness_centrality_df, on="Graph ID")
@@ -367,7 +362,7 @@ class Eval:
         for graph in self.graphs:
             betweenness_results = nx.betweenness_centrality(self.graphs[graph])
             betweenness_centrality.append({'Graph ID': graph, 
-                                           'Betweenness centrality': betweenness_results,
+                                        #    'Betweenness centrality': betweenness_results,
                                            'Mean betweenness centrality': np.mean(list(betweenness_results.values()))})
         betweenness_centrality_df = pd.DataFrame(betweenness_centrality)
         self.graphdata_df = pd.merge(self.graphdata_df, betweenness_centrality_df, on="Graph ID")
@@ -451,3 +446,57 @@ class Eval:
         g.fig.subplots_adjust(top=0.9)
         g.fig.suptitle(feature)
         return g
+
+    def compute_ec50_metrics(self, ec50_df):
+        ec50_results = []
+
+        # Iterating over each graph in the dictionary
+        for key, graph in self.graphs.items():
+            # Check if the graph is in the graphdata_df
+            if key not in self.graphdata_df['Graph ID'].tolist():
+                continue
+
+            # Identify nodes in the current graph
+            graph_nodes = set(graph.nodes())
+
+            # Separate the DataFrame into two categories
+            in_network = ec50_df['Gene'].isin(graph_nodes)
+            ec50_in_network = ec50_df[in_network]
+            # select genes not in network but in all_nodes
+            ec50_out_network = ec50_df[~in_network]
+            
+
+            # Store EC50 values
+            ec50_values_in = ec50_in_network['log_ec50'].tolist()
+            ec50_values_out = ec50_out_network['log_ec50'].tolist()
+
+            # Calculate metrics
+            avg_ec50_in = np.mean(ec50_values_in) if ec50_values_in else np.nan
+            avg_ec50_out = np.mean(ec50_values_out) if ec50_values_out else np.nan
+            med_ec50_in = np.median(ec50_values_in) if ec50_values_in else np.nan
+            med_ec50_out = np.median(ec50_values_out) if ec50_values_out else np.nan
+            num_nodes_with_ec50 = len(ec50_in_network)
+            perc_nodes_with_ec50 = (num_nodes_with_ec50 / len(graph_nodes)) * 100
+
+            # Append the results to the list
+            ec50_results.append({
+                'Graph ID': key,
+                'avg_ec50_in_network': avg_ec50_in,
+                'avg_ec50_out_network': avg_ec50_out,
+                'med_ec50_in_network': med_ec50_in,
+                'med_ec50_out_network': med_ec50_out,
+                'ec50_values_in_network': ec50_values_in,
+                'ec50_values_out_network': ec50_values_out,
+                'num_nodes_with_ec50': num_nodes_with_ec50,
+                'perc_nodes_with_ec50': perc_nodes_with_ec50
+            })
+
+        # Creating a DataFrame from the results list
+        ec50_result_df = pd.DataFrame(ec50_results)
+        self.graphdata_df = pd.merge(self.graphdata_df, ec50_result_df, on="Graph ID")
+
+        return self.graphdata_df
+
+
+
+
