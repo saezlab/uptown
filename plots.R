@@ -6,21 +6,23 @@ library(egg)
 library(ggpattern)
 panacea_data <- read_csv('panacea_graphdata_results.csv')
 
-# change the random column so that it contains True when Random==real and False otherwise
+# changes the random column so that it contains True when Random==real and False otherwise
 panacea_data$Random <- ifelse(panacea_data$Random == 'real', 'False', 'True')
 
 methods <- panacea_data %>% pull(Methods) %>% unique() %>% sort()
 biocontexts <- panacea_data %>% 
   group_by(Biocontext) %>%
-# filter out the biocontext for which all rows from the column offtarget_counts is na
+# filters out the biocontext for which all rows from the column offtarget_counts is na
   filter(all(!is.na(`offtarget_count`))) %>%
   filter() %>% pull(Biocontext) %>% unique() %>% sort()
 
 panacea_data <- panacea_data %>% 
     filter(Biocontext %in% biocontexts) %>%
     mutate(Methods = factor(Methods, levels = methods))
-    # keep biocontexts present in the biocontext list
+    # keeps biocontexts present in the biocontext list
 
+
+# Figure 4
 biocontexts_order <- panacea_data %>% group_by(Biocontext, Methods, Random) %>%
     summarise(mean = mean(`perc_offtarget`, na.rm=TRUE), sd = sd(`perc_offtarget`, na.rm=TRUE)) %>%
     group_by(Biocontext, Methods) %>%
@@ -37,10 +39,8 @@ panacea_dotplot <- panacea_data %>% group_by(Biocontext, Methods, Random) %>%
     group_by(Biocontext, Methods) %>%
     summarise(mean_diff = -diff(mean), sd_diff = sd) %>%
     filter(!is.na(sd_diff)) %>%
-    # create dotplot, x is method, y is bio_context, color is mean_diff, size is sd_diff (bigger sd smaller size)
     ggplot(aes(x = Methods, y = Biocontext, color = mean_diff, size = sd_diff)) +
     geom_point() +
-    #scale color threshold: <0 is blue, +0 is red
     scale_color_gradient2(low = 'blue', mid = 'grey', high = 'red', midpoint = 0, limits = c(-50, 50)) +
     scale_size_continuous(range = c(0, 5), trans='reverse') +
     labs(color = 'Mean % diff\nreal - random', size = 'Null sd') +
@@ -63,7 +63,6 @@ top_annotation <- panacea_data %>% group_by(Biocontext, Methods, Random) %>%
     group_by(Methods) %>%
     mutate(mean_method_diff = mean(mean_diff, na.rm=TRUE)) %>%
     ggplot(aes(x = Methods, y = mean_diff, fill = mean_method_diff)) +
-    # color boxplot by mean y value
     geom_boxplot() +
     scale_fill_gradient2(low = 'blue', mid = 'grey', high = 'red', midpoint = 0, limits = c(-50, 50)) +
     geom_hline(yintercept = 0, linetype = 'dashed', linewidth = 0.75) +
@@ -82,7 +81,6 @@ right_annotation <- panacea_data %>% group_by(Biocontext, Methods, Random) %>%
     group_by(Biocontext) %>%
     mutate(mean_biocontext_diff = mean(mean_diff, na.rm=TRUE)) %>%
     ggplot(aes(y = Biocontext, x = mean_diff, fill = mean_biocontext_diff)) +
-    # color boxplot by mean y value
     geom_boxplot() +
     scale_fill_gradient2(low = 'blue', mid = 'grey', high = 'red', midpoint = 0, limits = c(-50, 50)) +
     geom_vline(xintercept = 0, linetype = 'dashed', linewidth = 0.75) +
@@ -95,21 +93,17 @@ right_annotation <- panacea_data %>% group_by(Biocontext, Methods, Random) %>%
           legend.position = 'none'
           )
 
-
-
-# The main plot is in the bottom left, the top annotation is above it, and the right annotation is to the right
-# The placeholder is in the top right to balance the layout
 arranged_plots <- ggarrange(
   top_annotation, legend,
   panacea_dotplot, right_annotation,
   ncol = 2, nrow = 2,
-  widths = c(2.5, 1), # Adjust as necessary
-  heights = c(1, 4)) # Adjust as necessary
+  widths = c(2.5, 1), 
+  heights = c(1, 4))
 
 
 ggsave('plots/panacea_dotplot.png', plot = arranged_plots, device = 'png', width = 19, height = 29, units = 'cm', dpi = 200)
 
-# numberss
+# numbers for text
 
 panacea_data %>% group_by(Biocontext, Methods, Random) %>%
     summarise(mean = mean(`perc_offtarget`, na.rm=TRUE), sd = sd(`perc_offtarget`, na.rm=TRUE)) %>%
@@ -127,6 +121,8 @@ panacea_data %>% group_by(Biocontext, Methods, Random) %>%
     summarise(mean_method_diff = mean(mean_diff, na.rm=TRUE)) %>% arrange(desc(mean_method_diff)) %>% print(n=40)
 
 
+
+# Supplementary figure 10
 
 offtargets_df <- read_tsv('panacea_offtargets.tsv') %>% group_by(cmpd) %>%
     summarise(count = n())
@@ -168,10 +164,10 @@ right_plots <- ggarrange(plot_bigdispersion, plot_small_dispersion, ncol = 1, nr
 
 disagreement_plots <- ggarrange(disagreement_plot, right_plots, ncol = 2, nrow = 1, widths = c(4, 3), padding = unit(3, 'cm'))
 
-
-
 ggsave('plots/panacea_disagreement.svg', plot = disagreement_plots, device = 'svg', width = 13, height = 10, units = 'in', dpi = 200)
 
+
+# numbers for text
 disagreement_df %>% group_by(factor(count)) %>%
     summarise(mean = mean(mean_diff, na.rm=TRUE), sd = sd(mean_diff, na.rm = TRUE), 
     min = min(mean_diff, na.rm=TRUE),
@@ -185,6 +181,9 @@ disagreement_df %>% group_by(factor(count)) %>%
     max = max(sd_diff, na.rm=TRUE),
     median = median(sd_diff, na.rm = TRUE))
 
+
+
+# Discarded plot, plots per biocontext the distribution of a metric in real and random networks (facet of 47 boxplots)
 panacea_facet_offtargets <- panacea_data %>% group_by(Biocontext, Methods, Random) %>%
     # create boxplots, real vs random, offtarget_nodes column, facet by bio_context
     ggplot(aes(x = Random, y = `perc_offtarget_nodes`, fill = Random)) +
@@ -194,6 +193,9 @@ panacea_facet_offtargets <- panacea_data %>% group_by(Biocontext, Methods, Rando
     facet_wrap(~Biocontext)
 
 ggsave('plots/panacea_facet_offtargets.png', plot = panacea_facet_offtargets, device = 'png', width = 13, height = 10, units = 'in', dpi = 200)
+
+
+# Supplementary figure 1
 
 panacea_de <- read_tsv('panacea_de_all.tsv')
 # per biocontext, count how many genes are DE
@@ -207,7 +209,7 @@ panacea_de_count <- panacea_de %>%
 order_celllines <- panacea_de_count %>% group_by(cell_line) %>% summarise(count = sum(count)) %>% arrange(desc(count)) %>% pull(cell_line)
 order_treatments <- panacea_de_count %>% group_by(treatment) %>% summarise(count = sum(count)) %>% arrange(count) %>% pull(treatment)
 
-# plot a dotplot of the number of DE genes, cell line in x, treatment in y. The size is the count, the color is if this count is above 30 or below
+# plots a dotplot of the number of DE genes, cell line in x, treatment in y. The size is the count, the color is if this count is above 30 or below
 panacea_de_count_plot <- panacea_de_count %>%
     mutate(cell_line = factor(cell_line, levels = order_celllines),
            treatment = factor(treatment, levels = order_treatments)) %>%
@@ -228,96 +230,70 @@ ggsave('plots/panacea_de_threshold.png', plot = panacea_de_count_plot, device = 
 
 
 
-
-
-
-
-
-
 decryptm_data <- read_csv('decryptm_graphdata_results.csv')
 
 decryptm_data$Random <- ifelse(decryptm_data$Random == 'real', 'False', 'True')
 
-perc_nodes_random <- decryptm_data %>% 
-  filter(Random == "True") %>% pull(perc_nodes_with_ec50) %>% mean(., na.rm=TRUE) %>% round(2)
 
-perc_nodes_real <- decryptm_data %>% group_by(Biocontext, Methods, Random) %>%
-  filter(Random == "False") %>% pull(perc_nodes_with_ec50) %>% mean(., na.rm=TRUE) %>% round(2)
-
-ec50_plot_random <- decryptm_data %>% group_by(Biocontext, Methods, Random) %>%
-  filter(Random == "True") %>%
-    # plot histogram of ec50 distribution
-    ggplot(aes(x = perc_nodes_with_ec50, pattern=Random)) +
-    geom_histogram_pattern(bins = 20, pattern_colour = 'black', fill='grey90', color='black', pattern_angle = 45, pattern_density = 0.1, pattern_spacing = 0.025, pattern_key_scale_factor = 0.6) +
-    theme_cowplot() +
-    # add a line at mean
-    geom_vline(aes(xintercept = mean(perc_nodes_with_ec50, na.rm=TRUE)), linetype = 'dashed') +
-    # write annotation with mean and in the 70% of the y axis
-    ylim(0, 5000) +
-    xlim(0, 40) +    
-    annotate(geom = 'text', x = 20, y = 4000, label = paste('Mean:',perc_nodes_random), color = 'black') +
-    # min x 0, max undetermined
-    theme(
-  strip.background = element_blank(),
-  strip.text.x = element_blank(),
-  axis.text.x = element_blank(),
-  axis.title.x = element_blank()
-)
+# DIscarded figure, it plots the distribution of coverage of ec50 values in real and random networks
 
 
-ec50_plot_real<- decryptm_data %>% group_by(Biocontext, Methods, Random) %>%
-  filter(Random == "False") %>%
-    # plot histogram of ec50 distribution
-    ggplot(aes(x = perc_nodes_with_ec50, pattern=Random)) +
-    geom_histogram_pattern(bins = 20, , pattern_colour = 'black', fill='white', color='black', pattern_angle = 45, pattern_density = 0.1, pattern_spacing = 0.025, pattern_key_scale_factor = 0.6) +
-    theme_cowplot() +
-    scale_pattern_manual(values = c('False' = 'circle')) +
-    # add a line at mean
-    geom_vline(aes(xintercept = mean(perc_nodes_with_ec50, na.rm=TRUE)), linetype = 'dashed') +
-    # write annotation with mean and in the 70% of the y axis
-    ylim(0, 5) +
-    annotate(geom = 'text', x = 20, y = 4, label = paste('Mean:',perc_nodes_real), color = 'black') +
-    # min x 0, max undetermined
+# perc_nodes_random <- decryptm_data %>% 
+#   filter(Random == "True") %>% pull(perc_nodes_with_ec50) %>% mean(., na.rm=TRUE) %>% round(2)
+
+# perc_nodes_real <- decryptm_data %>% group_by(Biocontext, Methods, Random) %>%
+#   filter(Random == "False") %>% pull(perc_nodes_with_ec50) %>% mean(., na.rm=TRUE) %>% round(2)
+
+# ec50_plot_random <- decryptm_data %>% group_by(Biocontext, Methods, Random) %>%
+#   filter(Random == "True") %>%
+#     # plot histogram of ec50 distribution
+#     ggplot(aes(x = perc_nodes_with_ec50, pattern=Random)) +
+#     geom_histogram_pattern(bins = 20, pattern_colour = 'black', fill='grey90', color='black', pattern_angle = 45, pattern_density = 0.1, pattern_spacing = 0.025, pattern_key_scale_factor = 0.6) +
+#     theme_cowplot() +
+#     # add a line at mean
+#     geom_vline(aes(xintercept = mean(perc_nodes_with_ec50, na.rm=TRUE)), linetype = 'dashed') +
+#     # write annotation with mean and in the 70% of the y axis
+#     ylim(0, 5000) +
+#     xlim(0, 40) +    
+#     annotate(geom = 'text', x = 20, y = 4000, label = paste('Mean:',perc_nodes_random), color = 'black') +
+#     # min x 0, max undetermined
+#     theme(
+#   strip.background = element_blank(),
+#   strip.text.x = element_blank(),
+#   axis.text.x = element_blank(),
+#   axis.title.x = element_blank()
+# )
+
+
+# ec50_plot_real<- decryptm_data %>% group_by(Biocontext, Methods, Random) %>%
+#   filter(Random == "False") %>%
+#     # plot histogram of ec50 distribution
+#     ggplot(aes(x = perc_nodes_with_ec50, pattern=Random)) +
+#     geom_histogram_pattern(bins = 20, , pattern_colour = 'black', fill='white', color='black', pattern_angle = 45, pattern_density = 0.1, pattern_spacing = 0.025, pattern_key_scale_factor = 0.6) +
+#     theme_cowplot() +
+#     scale_pattern_manual(values = c('False' = 'circle')) +
+#     # add a line at mean
+#     geom_vline(aes(xintercept = mean(perc_nodes_with_ec50, na.rm=TRUE)), linetype = 'dashed') +
+#     # write annotation with mean and in the 70% of the y axis
+#     ylim(0, 5) +
+#     annotate(geom = 'text', x = 20, y = 4, label = paste('Mean:',perc_nodes_real), color = 'black') +
+#     # min x 0, max undetermined
     
-    xlim(0, 40) +    
-    theme(
-  strip.background = element_blank(),
-  strip.text.x = element_blank(),
-  legend.position = 'right'
-)
+#     xlim(0, 40) +    
+#     theme(
+#   strip.background = element_blank(),
+#   strip.text.x = element_blank(),
+#   legend.position = 'right'
+# )
 
-ec50_plots <- ggarrange(ec50_plot_random, ec50_plot_real, ncol = 1, nrow = 2, heights = c(1, 1))
-ggsave('decryptm_ec50.svg', ec50_plots, device = 'svg', width = 13, height = 10, units = 'in', dpi = 200)
+# ec50_plots <- ggarrange(ec50_plot_random, ec50_plot_real, ncol = 1, nrow = 2, heights = c(1, 1))
+# ggsave('decryptm_ec50.svg', ec50_plots, device = 'svg', width = 13, height = 10, units = 'in', dpi = 200)
 
-ggsave('C:/Users/victo/Desktop/ec50_plot.png', plot = ec50_plot, device = 'png', width = 10, height = 10, units = 'in', dpi = 200)
+# ggsave('C:/Users/victo/Desktop/ec50_plot.png', plot = ec50_plot, device = 'png', width = 10, height = 10, units = 'in', dpi = 200)
 
-
-
-
-offtargets <- read_tsv('panacea_offtargets.tsv')
-tfs <- read_tsv('tf_activity_results.tsv')
-offtargets_list <- offtargets %>% pull(target) %>% unique()
-tfs_list <- colnames(tfs) %>% unique()
-network_collectri <- read_tsv('network_collectri.sif')
-network_collectri_nodes <- union(network_collectri$`# source`, network_collectri$target) %>% unique()
-# percentage of offtargets in the network
-length(intersect(offtargets_list, network_collectri_nodes)) / length(offtargets_list)
-# intersection of the two lists
-common <- intersect(offtargets_list, tfs_list)
-# create raincloud plot
-ggplot(data, aes(x = Methods, y = `offtarget_count`, fill = Random)) +
-    geom_boxplot(width = 0.2) + 
-    theme(axis.text.x = element_text(angle = 90, hjust = 1))
-
-
-
-
-ggplot(data, aes(x = Methods, y = `offtarget_count`, fill = Random)) +
-    geom_density_ridges(alpha = 0.5) +
-    geom_boxplot(width = 0.2) + 
-    theme(axis.text.x = element_text(angle = 90, hjust = 1))
     
 
+# Figure 6
 filtered_data <- decryptm_data %>%
   filter(Random == 'False') %>%
   select(Biocontext, Methods, ec50_values_in_network, ec50_values_out_network)
@@ -371,8 +347,9 @@ theme_cowplot() +
 
 ggsave('ec50_nodes.png', ec50_nodes, device = 'png', width = 10, height = 10, units = 'in', dpi = 200)
 
-# numberss
 
+
+# Figure 3
 mean_metrics <- panacea_data %>% 
     summarise(`Number of nodes` = mean(`Number of nodes`, na.rm=TRUE), `sd_Number of nodes` = sd(`Number of nodes`, na.rm=TRUE),
     `Number of edges` = mean(`Number of edges`, na.rm=TRUE), `sd_Number of edges` = sd(`Number of edges`, na.rm=TRUE),
@@ -419,26 +396,25 @@ methods <- heatmap_data$Methods
 metrics <- colnames(heatmap_data)[!colnames(heatmap_data) %in% "Methods"]
 
 # remove cols in metrics_matrix that are not in metrics, also rearrange the columns to match the order of metrics
-metrics_matrix <- metrics_matrix[, metrics] %>% # round values to 2 decimals
+metrics_matrix <- metrics_matrix[, metrics] %>%
   round(2)
 
 
-# Remove the Methods column to have a pure matrix
 heatmap_matrix <- as.matrix(heatmap_data[, metrics])
 
 
 text_annotation <- HeatmapAnnotation(
     averages = anno_text(
-        t(metrics_matrix),  # Transposing the matrix to match the correct orientation
+        t(metrics_matrix),  
         just = "center", 
         gp = gpar(fontsize = 10, col = "black"),
-        border = TRUE,  # Adding a border around the text
-        padding = unit(c(2, 2), "mm")  # Adjust padding as needed
+        border = TRUE,  
+        padding = unit(c(2, 2), "mm") 
     ),
-    which = "column",  # Specify that this is a column annotation
-    height = unit(2, "cm"),  # Adjust the height of the annotation
-    title = "Averages",  # Add a title to the top annotation
-    title_gp = gpar(fontsize = 12, fontface = "bold")  # Customize the title appearance
+    which = "column", 
+    height = unit(2, "cm"),
+    title = "Averages",  
+    title_gp = gpar(fontsize = 12, fontface = "bold") 
 )
 
 
@@ -451,7 +427,6 @@ text_annotation <- HeatmapAnnotation('Average value across methods' = anno_text(
     which = "column",
     height = unit(1, "cm"),
     show_name = TRUE
-    #change name fontsize
     ),
     annotation_name_gp = gpar(fontsize = 11, fontface = "bold"))
 
@@ -479,10 +454,8 @@ heatmap <- Heatmap(heatmap_matrix,
           # The value to be placed in the cell
           value <- heatmap_matrix[i, j]
           
-          # Formatting the value to a string, you can format it as needed
           text_value <- sprintf("%.2f", value) %>% paste0("%")
 
-          # Adding the text to the cell
           grid.text(text_value, x, y, gp = gpar(fontsize = 10, col = "white", fontface = "bold"))
         })
 
@@ -490,7 +463,6 @@ heatmap <- Heatmap(heatmap_matrix,
 legend <- Legend(col_fun = circlize::colorRamp2(c(-150, 0, 150), c("blue", "grey", "red")),
                  title = "Deviation from\nmean (%)",
                 at = seq(-150, 150, 50),
-                # labels = c("-150", "0", "150"),
                  direction = "vertical",
                  title_gp = gpar(fontsize = 11, fontface = "bold"),
                  labels_gp = gpar(fontsize = 10))
@@ -503,7 +475,9 @@ dev.off()
 
 
 
-mean_metrics %>% View()
+
+
+# Supplementary figures 3-8
 
 panacea_data %>% 
   mutate(Random = ifelse(Random == 'real', 'False', 'True')) %>%

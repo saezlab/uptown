@@ -70,61 +70,62 @@ unique_combinations <- fitted_params %>% distinct(Index, Gene, Drug, rep, rsq) %
 combs_over_threshold <- unique_combinations %>% filter(rsq >= 0.8)
 combs_under_threshold <- unique_combinations %>% filter(rsq < 0.8) %>% slice_sample(n=100)
 
-# iterate over all combinations of gene, drug, peptide and rep
-pdf('fitted_curves.pdf', width = 10, height = 7)
-combs_over_threshold %>%
-  group_by(Index, Gene, Drug, rep) %>%
-  group_walk(~{
-    # Aquí puedes acceder a cada grupo con .x y .y
-    # .x es el dataframe del grupo actual
-    # .y es un dataframe con las claves del grupo actual
-    gene <- .y$Gene
-    drug <- .y$Drug
-    index <- .y$Index
-    rep <- .y$rep
+# in case you want to fit the dose-response curves, you need to fit the data first. See decryptm_fit.py
 
-    p <- fitted_curves %>% 
-        filter(Gene == gene, Drug == drug, Index == index, rep==!!rep) %>% 
-        ggplot(aes(x = x_fit, y = y_fit)) +
-        geom_line() +
-        scale_x_log10() +
-        ggtitle(paste0(index, ' ', drug, ' ', rep)) +
-        cowplot::theme_cowplot() +
-        # plot r2
-        annotate("text", x = 0.1, y = 1, label = paste0('r2 = ', round(unique(fitted_params %>% filter(Gene == gene, Drug == drug, Index == index, rep == !!rep) %>% pull(rsq)), 2))) +
-        annotate("text", x = 0.1, y = 1.1, label = paste0('top = ', round(unique(fitted_params %>% filter(Gene == gene, Drug == drug, Index == index, rep == !!rep) %>% pull(top)), 2))) +
-        annotate("text", x = 0.1, y = 1.2, label = paste0('log ec50 = ', round(unique(fitted_params %>% filter(Gene == gene, Drug == drug, Index == index, rep == !!rep) %>% pull(log_ec50)), 2))) +
-        annotate("text", x = 0.1, y = 1.3, label = paste0('bottom = ', round(unique(fitted_params %>% filter(Gene == gene, Drug == drug, Index == index, rep == !!rep) %>% pull(bottom)), 2))) +
-        annotate("text", x = 0.1, y = 1.4, label = paste0('slope = ', round(unique(fitted_params %>% filter(Gene == gene, Drug == drug, Index == index, rep == !!rep) %>% pull(slope)), 2))) +
-        theme(legend.position = 'none')
+# pdf('fitted_curves.pdf', width = 10, height = 7)
+# combs_over_threshold %>%
+#   group_by(Index, Gene, Drug, rep) %>%
+#   group_walk(~{
+#     # Aquí puedes acceder a cada grupo con .x y .y
+#     # .x es el dataframe del grupo actual
+#     # .y es un dataframe con las claves del grupo actual
+#     gene <- .y$Gene
+#     drug <- .y$Drug
+#     index <- .y$Index
+#     rep <- .y$rep
+
+#     p <- fitted_curves %>% 
+#         filter(Gene == gene, Drug == drug, Index == index, rep==!!rep) %>% 
+#         ggplot(aes(x = x_fit, y = y_fit)) +
+#         geom_line() +
+#         scale_x_log10() +
+#         ggtitle(paste0(index, ' ', drug, ' ', rep)) +
+#         cowplot::theme_cowplot() +
+#         # plot r2
+#         annotate("text", x = 0.1, y = 1, label = paste0('r2 = ', round(unique(fitted_params %>% filter(Gene == gene, Drug == drug, Index == index, rep == !!rep) %>% pull(rsq)), 2))) +
+#         annotate("text", x = 0.1, y = 1.1, label = paste0('top = ', round(unique(fitted_params %>% filter(Gene == gene, Drug == drug, Index == index, rep == !!rep) %>% pull(top)), 2))) +
+#         annotate("text", x = 0.1, y = 1.2, label = paste0('log ec50 = ', round(unique(fitted_params %>% filter(Gene == gene, Drug == drug, Index == index, rep == !!rep) %>% pull(log_ec50)), 2))) +
+#         annotate("text", x = 0.1, y = 1.3, label = paste0('bottom = ', round(unique(fitted_params %>% filter(Gene == gene, Drug == drug, Index == index, rep == !!rep) %>% pull(bottom)), 2))) +
+#         annotate("text", x = 0.1, y = 1.4, label = paste0('slope = ', round(unique(fitted_params %>% filter(Gene == gene, Drug == drug, Index == index, rep == !!rep) %>% pull(slope)), 2))) +
+#         theme(legend.position = 'none')
     
-    # print real measurements in the same plot
-    p2 <- p + geom_point(data = results_tfs_longf %>% filter(Gene == gene, Drug == drug, Index == index, rep==!!rep), aes(x = conc, y = ratio), alpha = 0.5)
+#     # print real measurements in the same plot
+#     p2 <- p + geom_point(data = results_tfs_longf %>% filter(Gene == gene, Drug == drug, Index == index, rep==!!rep), aes(x = conc, y = ratio), alpha = 0.5)
 
-    print(p2)
-  })
+#     print(p2)
+#   })
 
 
-combs_under_threshold %>%
-    group_by(Index, Gene, Drug, rep) %>%
-    group_walk(~{
-        gene <- .y$Gene
-        drug <- .y$Drug
-        index <- .y$Index
-        rep <- .y$rep
+# combs_under_threshold %>%
+#     group_by(Index, Gene, Drug, rep) %>%
+#     group_walk(~{
+#         gene <- .y$Gene
+#         drug <- .y$Drug
+#         index <- .y$Index
+#         rep <- .y$rep
         
-        p <- results_tfs_longf %>% 
-            filter(Gene == gene, Drug == drug, Index == index, rep==!!rep) %>% 
-            ggplot(aes(x = conc, y = ratio)) +
-            # add title
-            ggtitle(paste0(index, ' ', drug, ' ', rep)) +
-            geom_point() +
-            scale_x_log10() +
-            cowplot::theme_cowplot() +
-            theme(legend.position = 'none')
-        print(p)
-    })
-dev.off()
+#         p <- results_tfs_longf %>% 
+#             filter(Gene == gene, Drug == drug, Index == index, rep==!!rep) %>% 
+#             ggplot(aes(x = conc, y = ratio)) +
+#             # add title
+#             ggtitle(paste0(index, ' ', drug, ' ', rep)) +
+#             geom_point() +
+#             scale_x_log10() +
+#             cowplot::theme_cowplot() +
+#             theme(legend.position = 'none')
+#         print(p)
+#     })
+# dev.off()
 
 
 phosphorylated_prots <- fitted_params %>% pull(Gene) %>% unique()

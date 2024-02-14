@@ -6,8 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 import itertools
-from path_calc import Solver    
-# import umap
+from solver import Solver    
 import matplotlib.pyplot as plt
 
 

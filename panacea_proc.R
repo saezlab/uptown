@@ -48,38 +48,6 @@ for (i in 1:length(treatments)){
 write_tsv(mega_df, 'panacea_de.tsv')
   
 
-
-
-  
-  targets_drug <- panacea_targets %>% filter(cmpd == treatment) %>% select(target) %>% pull()
-
-  panacea_treatment_filtered$regulation <- ifelse(panacea_treatment_filtered$logFC > 1.5 & panacea_treatment_filtered$padj < 0.05, "Upregulated",
-                                    ifelse(panacea_treatment_filtered$logFC < -1.5 & panacea_treatment_filtered$padj < 0.05, "Downregulated", "No Change"))
-
-  panacea_treatment_filtered$target <- panacea_treatment_filtered$gene_symbol %in% targets_drug & (panacea_treatment_filtered$regulation == "Upregulated" | panacea_treatment_filtered$regulation == "Downregulated")
-
-  volcano_plot <- ggplot(panacea_treatment_filtered, aes(x = logFC, y = -log10(padj), color = regulation)) +
-    geom_point(alpha = 0.5) +
-    geom_hline(yintercept = -log10(0.05), linetype = "dashed", color = "red") +
-    geom_vline(xintercept = 1.5, linetype = "dashed", color = "blue") +
-    geom_vline(xintercept = -1.5, linetype = "dashed", color = "blue") +
-    geom_text(data = subset(panacea_treatment_filtered, target & (regulation == "Upregulated" | regulation == "Downregulated")),
-              aes(label = gene_symbol), vjust = -0.5, hjust = 0.5) +
-    theme_minimal() +
-    scale_color_manual(values = c("Upregulated" = "red", "Downregulated" = "blue", "No Change" = "black")) +
-    xlab("Log2 Fold Change") +
-    ylab("-Log10 P-value") +
-    theme(legend.position = "none") +
-    facet_grid(cell_line~treatment)
-  
-  plot_list[[i]] <- volcano_plot
-}
-
-library(egg)
-volcanos <- egg::ggarrange(plots = plot_list, ncol = 32)
-ggsave('panacea_volcanos_tmm_limma.png', volcanos, width = 100, height = 40, dpi = 200, limitsize=FALSE)
-
-
 full_targets <- panacea_targets %>% select(cmpd, target, rank)
 
 des_targets <- full_targets %>% filter(rank == 1)
@@ -92,25 +60,6 @@ offtargets_df <- full_targets %>% filter(rank != 1) %>% select(-rank)
 offtargets_df
 
 write_tsv(offtargets_df, 'panacea_offtargets.tsv')
-
-
-panacea_targets_df <- tibble()
-for(treatment in treatments){
-  panacea_treatment_filtered <- panacea_de_filtered %>%
-    select(gene_symbol, contains(treatment)) %>%
-    pivot_longer(cols = -gene_symbol, names_to = 'pipeline', values_to = 'value') %>%
-    separate_wider_delim(pipeline, delim = '__', names = c('statparam', 'status', 'pipeline', 'biocontext', 'main_dataset', 'subset')) %>%
-    separate_wider_delim(biocontext, delim = '_', names = c('cell_line', 'treatment', 'v', 'dmso1', 'dmso2')) %>%
-    select(-dmso1, -v, -dmso2, -status, -pipeline, -main_dataset, -subset) %>%
-    pivot_wider(names_from = statparam, values_from = value) %>%
-    filter(logFC > 1.5 & padj < 0.05) %>%
-    arrange(desc(abs(stat)))
-  
-  panacea_targets_df <- bind_rows(panacea_targets_df, panacea_treatment_filtered)
-
-}
-
-write_tsv(panacea_targets_df, 'panacea_targets.tsv')
 
 
 

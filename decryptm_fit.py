@@ -13,8 +13,8 @@ def find_files(root_dir, filename):
                 matches.append(os.path.join(dirpath, file))
     return matches
 
-# Uso de la función
-root_dir = './decryptm'  # reemplaza esto con tu directorio raíz
+# replace this with root dir with processed decryptm files and experiment summary
+root_dir = './decryptm'  
 filename = 'ratio_single-site_MD.tsv'
 matches = find_files(root_dir, filename)
 
@@ -91,7 +91,7 @@ df.columns
 df.drop(columns=['ProteinID', 'Peptide', 'SequenceWindow', 'MaxPepProb',
        'ReferenceIntensity'], inplace=True)
 
-
+# only these columns + sample + ratio should remain to ensure good long formatting
 df_columns = ['Index', 'Gene', 'runid', 'analysistype', 'cell_line', 'drug',
        'time', 'rep']
 
@@ -101,30 +101,28 @@ longf_df = pd.melt(df, id_vars=df_columns,
 
 longf_df['conc'] = longf_df['sample'].map(concentrations_dict)
 
-longf_df.to_csv('detected_peptides_long_MD.csv', index=False)
+# save longf_df in case of crash
+# longf_df.to_csv('detected_peptides_long_MD.csv', index=False)
 
-longf_df = pd.read_csv('detected_peptides_long_MD.csv')
+# longf_df = pd.read_csv('detected_peptides_long_MD.csv')
 
 
 # per Modified Peptide, Gene, drug, cell_line and rep, get the number of rows in the longdf_martin
 longdf_size = longf_df.groupby(df_columns).size().reset_index(name='counts')
-# get entries with counts distinct to 10
+# get entries with counts distinct to 10 to ensure there are no weird duplicates (10 ratios)
 longdf_size[longdf_size['counts'] != 10]
-
-# count nmber of rows per peptide, gene, drug, cell_line and rep in the df object
-
-# filter out genes not present in collectri_tfs
-# longf_df = longf_df[~longf_df['Gene'].isin(collectri_tfs)]
 
 # # plot ratios distribution
 # plt.figure()
 # plt.hist(longf_df['ratio'], bins=100)
 # plt.show()
 
-# from https://github.com/kusterlab/decryptM
+
 
 def logistic_model(x, ec50, slope, top, bottom):
     """
+    From https://github.com/kusterlab/decryptM
+
     Logistic model to fit the drug response data.
 
     Parameters
@@ -150,6 +148,8 @@ def logistic_model(x, ec50, slope, top, bottom):
 
 def fit_logistic_function(y_data, x_data, x_interpolated=None, curve_guess=None, curve_bounds=None, max_opt=None):
     """
+    From https://github.com/kusterlab/decryptM
+
     fit_logistic_function(y_data, x_data, x_interpolated=None, max_opt=None)
 
     This function is fitting a 4 parameter logistic function to the given y & x data.
@@ -212,10 +212,7 @@ def fit_logistic_function(y_data, x_data, x_interpolated=None, curve_guess=None,
     except RuntimeError:
         return 10 * (np.nan,)
 
-# using the concentrations dict, create a new column with the concentration for each sample
 
-# per gene, drug and cell_line, fit logistic curve
-# create empty df
 fit_params = pd.DataFrame(columns=['Index', 'Gene', 'Drug', 'Cell_line', 'rep', 'log_ec50', 'slope', 'top', 'bottom', 'rsq', 'rmse', 'log_ec50_error', 'slope_error', 'top_error', 'bottom_error'])
 
 
@@ -253,16 +250,4 @@ for comb in unique_combinations.values:
 fit_params.to_csv('fit_params_peptide_all_bound.csv', index=False)
 
 
-# 131 genes with peptides with at least r2 > 0.8
-phosphorylated_interm = fit_params[(fit_params['rsq'] > 0.8) & (fit_params['log_ec50'] < 2)]
 
-
-phospho_prots = phosphorylated_interm[['Drug', 'Gene']].drop_duplicates()
-
-phospho_prots.to_csv('phospho_prots.tsv', sep='\t', index=False)
-
-
-
-## plots
-
-fit_params = pd.read_csv('fit_params_peptide_rep_MD.csv')
