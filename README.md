@@ -4,7 +4,11 @@ This repository is part of my Master's Thesis, conducted at the Institute for Co
 ## Introduction
  UPTOWN (Unified PlaTform fOr netWork iNference) is a unified and standardised environment to run six well-established, baseline methods for context-specific network inference. All methods aim to connect a source node, origin of the perturbation, to a set of several downstream nodes containing molecular measurements of the perturbation effects. The six methods contain very elementary approaches, but they are, to some degree, represented in many widely used tools for network inference. The shortest-paths and all-paths modules are used to connect sources to targets, while PPR acts as a heat-diffusion-like algorithm to prioritise well-connected nodes in the solution networks. The combination of these modules, coupled with a sign consistency check, provides a good framework for network inference using baseline, well established methods. 
 
- [picture]
+ 
+<p align="center">
+ <img src="https://github.com/saezlab/uptown/assets/67371346/7f238bc8-5380-4103-828d-3a75c05dd3a0" width="800"/>
+</p>
+
 
  ## Contents
  This repository contains the two main files from UPTOWN, evaluation.py and solver.py. In addition, it contains files necessary for the analyses detailed in my Master's Thesis. Below is a brief overview of each file:
